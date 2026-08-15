@@ -28,7 +28,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { formatBRL, formatDate, getWhatsAppLink } from "@/lib/format";
+import { formatBRL, formatDate, getWhatsAppLink, normalizeBrazilianPhone } from "@/lib/format";
+import { validateCPF } from "@/finance/validators";
 import { useEmployees } from "@/hooks/use-employees";
 import { useClients } from "@/hooks/use-clients";
 import { useLoans } from "@/hooks/use-loans";
@@ -158,18 +159,36 @@ function Funcionarios() {
       toast.error("Preencha os campos obrigatórios: Nome, Telefone e WhatsApp.");
       return;
     }
+
+    const normPhone = normalizeBrazilianPhone(newFormData.phone);
+    if (!normPhone) {
+      toast.error("Telefone inválido.");
+      return;
+    }
+
+    const normWhatsapp = normalizeBrazilianPhone(newFormData.whatsapp);
+    if (!normWhatsapp) {
+      toast.error("WhatsApp inválido.");
+      return;
+    }
+
+    if (newFormData.cpf && !validateCPF(newFormData.cpf)) {
+      toast.error("CPF inválido.");
+      return;
+    }
+
     setIsCreating(true);
     try {
       await createEmployeeFn({
         data: {
           full_name: newFormData.full_name,
-          phone: newFormData.phone,
-          whatsapp: newFormData.whatsapp,
+          phone: normPhone,
+          whatsapp: normWhatsapp,
           cpf: newFormData.cpf || undefined,
           pix_key: newFormData.pix_key || undefined,
           notes: newFormData.notes || undefined,
-          commission_rate_percent: parseFloat(newFormData.commission_rate_percent) || 10,
-          penalty_split_percent: parseFloat(newFormData.penalty_split_percent) || 50,
+          commission_rate_percent: newFormData.commission_rate_percent !== "" ? parseFloat(newFormData.commission_rate_percent) : 10,
+          penalty_split_percent: newFormData.penalty_split_percent !== "" ? parseFloat(newFormData.penalty_split_percent) : 50,
         }
       });
       toast.success("Colaborador cadastrado com sucesso!");
@@ -456,6 +475,24 @@ function PainelFuncionario({
       toast.error("Nome, Telefone e WhatsApp são obrigatórios.");
       return;
     }
+
+    const normPhone = normalizeBrazilianPhone(editPhone);
+    if (!normPhone) {
+      toast.error("Telefone inválido.");
+      return;
+    }
+
+    const normWhatsapp = normalizeBrazilianPhone(editWhatsapp);
+    if (!normWhatsapp) {
+      toast.error("WhatsApp inválido.");
+      return;
+    }
+
+    if (editCpf && !validateCPF(editCpf)) {
+      toast.error("CPF inválido.");
+      return;
+    }
+
     setIsSaving(true);
     try {
       await updateEmployeeFn({
@@ -463,13 +500,13 @@ function PainelFuncionario({
           id: funcionario.id,
           updates: {
             full_name: editName,
-            phone: editPhone,
-            whatsapp: editWhatsapp,
+            phone: normPhone,
+            whatsapp: normWhatsapp,
             cpf: editCpf || null,
             pix_key: editPixKey || null,
             notes: editNotes || null,
-            commission_rate_percent: parseFloat(editCommission) || 10,
-            penalty_split_percent: parseFloat(editPenaltySplit) || 50,
+            commission_rate_percent: editCommission !== "" ? parseFloat(editCommission) : 10,
+            penalty_split_percent: editPenaltySplit !== "" ? parseFloat(editPenaltySplit) : 50,
             status: editStatus,
           }
         }
