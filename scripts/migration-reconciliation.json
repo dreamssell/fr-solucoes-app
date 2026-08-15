@@ -1,0 +1,59 @@
+{
+  "generatedAt": "2026-08-07T10:40:00.000Z",
+  "entries": [
+    {
+      "version": "20260805000000",
+      "file": "20260805000000_notifications_and_audit.sql",
+      "sha256": "3e13c5dece007fafbbab7b16e7271041844175c6fc3ec96a5ade78e22c5ca2cf",
+      "reason": "Aplicada fora do fluxo versionado; efeitos ja presentes no schema real, comprovados por consulta somente leitura.",
+      "expectedObjects": [
+        "public.employee_notifications",
+        "public.employees.notification_preference",
+        "policy:public.employee_notifications.Users can view all notifications",
+        "policy:public.employee_notifications.Users can record their own notifications"
+      ],
+      "evidenceQuery": "SELECT ((SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='employees' AND column_name='notification_preference')=1 AND (SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='employee_notifications')=1 AND (SELECT count(*) FROM pg_policies WHERE schemaname='public' AND tablename='employee_notifications' AND policyname IN ('Users can view all notifications','Users can record their own notifications'))=2) AS present"
+    },
+    {
+      "version": "20260805000000",
+      "file": "20260805000000_storage_and_penalties.sql",
+      "sha256": "ab98173ecc58584ac131b9eda2033a094d8a0d4e1cf387baf982ccd8e9909fe1",
+      "reason": "Aplicada fora do fluxo versionado; efeitos ja presentes no schema real, comprovados por consulta somente leitura.",
+      "expectedObjects": [
+        "storage.buckets:documents",
+        "public.clients.penalty_kind",
+        "public.clients.penalty_value",
+        "public.clients.penalty_grace_days",
+        "public.clients.delay_interest_kind",
+        "public.clients.delay_interest_rate"
+      ],
+      "evidenceQuery": "SELECT ((SELECT count(*) FROM storage.buckets WHERE id='documents')=1 AND (SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='clients' AND column_name IN ('penalty_kind','penalty_value','penalty_grace_days','delay_interest_kind','delay_interest_rate'))=5) AS present"
+    },
+    {
+      "version": "20260805111700",
+      "file": "20260805111700_cleanup_qa_data.sql",
+      "sha256": "71146c66458014fbf9c6c7e1d72d314cbdbf4009755130626358a7a52b111f6c",
+      "reason": "Aplicada fora do fluxo versionado; efeitos ja presentes no schema real, comprovados por consulta somente leitura.",
+      "expectedObjects": [
+        "trigger:payment_allocations_no_delete",
+        "trigger:payments_no_delete",
+        "trigger:installments_no_delete",
+        "trigger:loans_no_delete",
+        "public.clients sem registros QA"
+      ],
+      "evidenceQuery": "SELECT ((SELECT count(*) FROM public.clients WHERE full_name ILIKE '%QA%')=0 AND (SELECT count(*) FROM pg_trigger WHERE tgname IN ('payment_allocations_no_delete','payments_no_delete','installments_no_delete','loans_no_delete') AND NOT tgisinternal)=4) AS present"
+    },
+    {
+      "version": "20260805202000",
+      "file": "20260805202000_fix_idempotency.sql",
+      "sha256": "c70c7b8805bfef5b24b9f7edeca652810fa61920425441a8448853bc06f7a3aa",
+      "reason": "Aplicada fora do fluxo versionado; efeitos ja presentes no schema real, comprovados por consulta somente leitura.",
+      "expectedObjects": [
+        "public.payments.idempotency_key",
+        "constraint:payments_idempotency_key_unique",
+        "public.process_payment_atomic"
+      ],
+      "evidenceQuery": "SELECT ((SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='payments' AND column_name='idempotency_key')=1 AND (SELECT count(*) FROM pg_constraint WHERE conname='payments_idempotency_key_unique')=1 AND (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname='process_payment_atomic')=1) AS present"
+    }
+  ]
+}

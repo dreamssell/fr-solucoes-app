@@ -1,0 +1,164 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Design system definition.
+ * 
+ * Theme: Fintech / Banking Premium Pro Max
+ * Palette: Black, Graphite, Discreet Gold, Green (success)
+ */
+
+@theme inline {
+  --color-gold: var(--gold);
+  --color-gold-muted: var(--gold-muted);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --color-warning: var(--warning);
+  --color-surface: var(--surface);
+  --color-graphite: var(--graphite);
+
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Sora", ui-sans-serif, system-ui, sans-serif;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 24px;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+:root {
+  /* Premium Dark Theme Base */
+  --background: oklch(0.12 0.005 240); /* Near Black */
+  --foreground: oklch(0.98 0.005 240); /* Clean White */
+
+  --graphite: oklch(0.25 0.01 240);
+  --surface: oklch(0.18 0.01 240);
+
+  --card: oklch(0.16 0.01 240);
+  --card-foreground: oklch(0.98 0.005 240);
+
+  --popover: oklch(0.16 0.01 240);
+  --popover-foreground: oklch(0.98 0.005 240);
+
+  /* Discreet Gold Primary */
+  --primary: oklch(0.72 0.09 85);
+  --primary-foreground: oklch(0.12 0.005 240);
+
+  --gold: oklch(0.72 0.09 85);
+  --gold-muted: oklch(0.45 0.05 85);
+
+  --secondary: oklch(0.25 0.01 240);
+  --secondary-foreground: oklch(0.98 0.005 240);
+
+  --muted: oklch(0.22 0.01 240);
+  --muted-foreground: oklch(0.65 0.01 240);
+
+  --accent: oklch(0.28 0.01 240);
+  --accent-foreground: oklch(0.98 0.005 240);
+
+  --destructive: oklch(0.55 0.18 25);
+  --destructive-foreground: oklch(0.98 0.005 240);
+
+  --border: oklch(0.22 0.01 240);
+  --input: oklch(0.22 0.01 240);
+  --ring: oklch(0.72 0.09 85);
+
+  /* Functional Colors */
+  --success: oklch(0.75 0.14 150); /* Emerald Green for values */
+  --danger: oklch(0.62 0.18 25);
+  --warning: oklch(0.82 0.14 75);
+
+  --sidebar: oklch(0.1 0.005 240);
+  --sidebar-foreground: oklch(0.9 0.01 240);
+  --sidebar-primary: oklch(0.72 0.09 85);
+  --sidebar-primary-foreground: oklch(0.12 0.005 240);
+  --sidebar-accent: oklch(0.2 0.01 240);
+  --sidebar-accent-foreground: oklch(0.98 0.005 240);
+  --sidebar-border: oklch(0.18 0.01 240);
+  --sidebar-ring: oklch(0.72 0.09 85);
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html {
+    color-scheme: dark;
+    scrollbar-gutter: stable;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    letter-spacing: -0.01em;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+}
+
+@layer utilities {
+  .glass {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  .gold-gradient {
+    background: linear-gradient(135deg, oklch(0.78 0.1 85), oklch(0.65 0.08 85));
+  }
+
+  .text-gradient-gold {
+    background: linear-gradient(135deg, oklch(0.82 0.1 85), oklch(0.6 0.08 85));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+}
