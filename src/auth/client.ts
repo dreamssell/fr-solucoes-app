@@ -16,7 +16,7 @@ async function fetchAccess(): Promise<AccessResult> {
   try {
     const { data, error } = await supabase.auth.getUser();
     if (error) {
-      // Sessão ausente é anônimo; qualquer outra falha é indisponibilidade técnica.
+      // Sessão ausente é anônimo; qualquer outra falha é indisponibilidade técnica interna.
       const message = String(error.message ?? "");
       if (/session|jwt|not authenticated|missing/i.test(message)) return { status: "anonymous" };
       return { status: "unavailable", message: UNAVAILABLE_MESSAGE };
