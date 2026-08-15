@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState, useEffect } from "react";
-import { Search, Plus, Upload, Phone, User, FileText, Loader2 } from "lucide-react";
+import { Search, Plus, Upload, Phone, User, FileText, Loader2, Trash2 } from "lucide-react";
 import { AppShell, PageHeader } from "@/components/fr/AppShell";
 import { SituacaoPill } from "@/components/fr/bits";
 import { Input } from "@/components/ui/input";
@@ -101,6 +101,37 @@ function Clientes() {
   }, [dbClients, busca, funcFilter]);
 
   const [isNewClientOpen, setIsNewClientOpen] = useState(false);
+  const [newDocs, setNewDocs] = useState<Array<{ id: string; name: string; file: File | null }>>([]);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const getUploadUrlFn = useServerFn(getUploadUrl);
+  const createClientDocumentFn = useServerFn(createClientDocument);
+
+  const addDocField = () => {
+    if (newDocs.length >= 7) return;
+    setNewDocs((prev) => [...prev, { id: crypto.randomUUID(), name: "", file: null }]);
+  };
+
+  const removeDocField = (id: string) => {
+    setNewDocs((prev) => prev.filter((d) => d.id !== id));
+  };
+
+  const updateDocName = (id: string, name: string) => {
+    setNewDocs((prev) => prev.map((d) => (d.id === id ? { ...d, name } : d)));
+  };
+
+  const handleDocFileChange = (id: string, file: File | null) => {
+    if (file && file.size > 10 * 1024 * 1024) {
+      toast.error("O arquivo deve ter no máximo 10MB.");
+      return;
+    }
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+    if (file && !allowedTypes.includes(file.type.toLowerCase())) {
+      toast.error("Formato não suportado. Use PDF ou Imagens (JPG, PNG, WEBP).");
+      return;
+    }
+    setNewDocs((prev) => prev.map((d) => (d.id === id ? { ...d, file } : d)));
+  };
   const [formData, setFormData] = useState({
     full_name: "",
     phone: "",
@@ -161,6 +192,15 @@ function Clientes() {
       }
     }
 
+    // Validate documents have both name and file selected
+    const validDocs = newDocs.filter((d) => d.file !== null && d.name.trim() !== "");
+    const incompleteDocs = newDocs.filter((d) => (d.file === null && d.name.trim() !== "") || (d.file !== null && d.name.trim() === ""));
+    if (incompleteDocs.length > 0) {
+      toast.error("Preencha o nome e selecione o arquivo para todos os documentos adicionados.");
+      return;
+    }
+
+    setIsSaving(true);
     try {
       const client = await createClient({
         full_name: formData.full_name,
@@ -174,6 +214,33 @@ function Clientes() {
         pix_key: formData.pix_key || null,
         notes: formData.notes || null,
       });
+
+      if (client?.id) {
+        // Upload documents
+        for (const doc of validDocs) {
+          if (doc.file) {
+            const { url, path } = await getUploadUrlFn({
+              data: { clientId: client.id, fileName: doc.file.name, contentType: doc.file.type },
+            });
+
+            const uploadRes = await fetch(url, {
+              method: "PUT",
+              body: doc.file,
+              headers: { "Content-Type": doc.file.type },
+            });
+
+            if (!uploadRes.ok) throw new Error(`Falha no upload do arquivo ${doc.name}`);
+
+            await createClientDocumentFn({
+              data: {
+                client_id: client.id,
+                name: doc.name,
+                file_path: path,
+              },
+            });
+          }
+        }
+      }
 
       if (formData.create_initial_loan && client?.id) {
         const selectedEmployee = dbEmployees?.find(e => e.id === formData.employee_id);
@@ -194,6 +261,7 @@ function Clientes() {
       }
 
       setIsNewClientOpen(false);
+      setNewDocs([]);
       setFormData({
         full_name: "",
         phone: "",
@@ -210,8 +278,10 @@ function Clientes() {
         initial_loan_installments: "10",
         initial_loan_frequency: "diario",
       });
-    } catch (e) {
-      // toast by hook
+    } catch (e: any) {
+      toast.error(e.message || "Erro ao cadastrar cliente");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -440,6 +510,63 @@ function Clientes() {
             </div>
 
             <div className="col-span-1 space-y-2 sm:col-span-2">
+              <div className="h-px bg-border my-2" />
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-semibold text-gold">Documentação (Máx 7)</Label>
+                {newDocs.length < 7 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-gold h-7 font-bold flex items-center gap-1"
+                    onClick={addDocField}
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Adicionar
+                  </Button>
+                )}
+              </div>
+              
+              <div className="space-y-3 mt-2">
+                {newDocs.map((doc) => (
+                  <div key={doc.id} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-end border border-border/40 p-2.5 rounded-lg bg-surface/50">
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-muted-foreground">Nome do Documento</Label>
+                      <Input
+                        placeholder="Ex: RG, CNH, Comprovante"
+                        value={doc.name}
+                        onChange={(e) => updateDocName(doc.id, e.target.value)}
+                        className="h-9"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-muted-foreground">Arquivo (Até 10MB)</Label>
+                      <Input
+                        type="file"
+                        accept=".pdf,.jpg,.jpeg,.png,.webp"
+                        className="h-9 text-xs file:hidden text-muted-foreground truncate cursor-pointer bg-card"
+                        onChange={(e) => handleDocFileChange(doc.id, e.target.files?.[0] || null)}
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="icon"
+                      className="h-9 w-9 bg-danger hover:bg-danger/90 shrink-0"
+                      onClick={() => removeDocField(doc.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+                {newDocs.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center py-2 italic">
+                    Nenhum documento anexado. Clique em Adicionar para subir arquivos.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="col-span-1 space-y-2 sm:col-span-2">
               <Label htmlFor="observacoes">Observações</Label>
               <Input
                 id="observacoes"
@@ -513,9 +640,9 @@ function Clientes() {
             <Button
               className="bg-gold text-black hover:bg-gold/90"
               onClick={handleCreate}
-              disabled={isCreating}
+              disabled={isCreating || isSaving}
             >
-              {isCreating ? <Loader2 className="h-4 w-4 animate-spin" /> : "Cadastrar Cliente"}
+              {isCreating || isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Cadastrar Cliente"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -531,8 +658,15 @@ function Clientes() {
   );
 }
 
-import { getSignedUrl, getUploadUrl, updateClient } from "@/lib/clients.functions";
-import { useQueryClient } from "@tanstack/react-query";
+import {
+  getSignedUrl,
+  getUploadUrl,
+  updateClient,
+  getClientDocuments,
+  createClientDocument,
+  deleteClientDocument,
+} from "@/lib/clients.functions";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 export function ClientePainel({
   cliente,
@@ -549,8 +683,17 @@ export function ClientePainel({
   const getSignedUrlFn = useServerFn(getSignedUrl);
   const getUploadUrlFn = useServerFn(getUploadUrl);
   const updateClientFn = useServerFn(updateClient);
+  const createClientDocumentFn = useServerFn(createClientDocument);
+  const deleteClientDocumentFn = useServerFn(deleteClientDocument);
+  const getClientDocumentsFn = useServerFn(getClientDocuments);
   const { data: loans } = useLoans();
   const queryClient = useQueryClient();
+
+  const { data: documents, refetch: refetchDocuments } = useQuery({
+    queryKey: ["client-documents", cliente.id],
+    queryFn: () => getClientDocumentsFn({ data: cliente.id }),
+    enabled: !!cliente.id,
+  });
 
   const [configPenaltyKind, setConfigPenaltyKind] = useState<PenaltyKind>(cliente?.penalty_kind ?? "nenhuma");
   const [configPenaltyValue, setConfigPenaltyValue] = useState(cliente?.penalty_value?.toString() ?? "0");
@@ -609,6 +752,10 @@ export function ClientePainel({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const docNameInput = prompt("Digite um nome/descrição para este documento (ex: RG, CNH):");
+    if (docNameInput === null) return;
+    const docName = docNameInput.trim() || file.name;
+
     setIsUploading(true);
     try {
       const { url, path } = await getUploadUrlFn({
@@ -623,22 +770,32 @@ export function ClientePainel({
 
       if (!uploadRes.ok) throw new Error("Falha no upload");
 
-      const currentDocs = cliente.document_files_urls || [];
-      await updateClientFn({
+      await createClientDocumentFn({
         data: {
-          id: cliente.id,
-          updates: { document_files_urls: [...currentDocs, path] },
+          client_id: cliente.id,
+          name: docName,
+          file_path: path,
         },
       });
 
       toast.success("Documento enviado com sucesso!");
-      queryClient.invalidateQueries({ queryKey: ["clients"] });
-      onUpdate();
+      refetchDocuments();
     } catch (err) {
       console.error(err);
       toast.error("Erro ao enviar documento");
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  const handleDeleteDocument = async (id: string) => {
+    if (!confirm("Tem certeza que deseja excluir este documento?")) return;
+    try {
+      await deleteClientDocumentFn({ data: id });
+      toast.success("Documento excluído com sucesso!");
+      refetchDocuments();
+    } catch (err) {
+      toast.error("Erro ao excluir documento");
     }
   };
 
@@ -759,24 +916,44 @@ export function ClientePainel({
                 <Label>Documentação do Cliente</Label>
 
                 <div className="grid grid-cols-1 gap-2">
-                  {cliente.document_files_urls?.map((path, idx) => (
+                  {documents?.map((doc) => (
                     <div
-                      key={idx}
-                      className="flex items-center justify-between rounded-md border border-border bg-surface p-2"
+                      key={doc.id}
+                      className="flex items-center justify-between rounded-md border border-border bg-surface p-2.5"
                     >
-                      <span className="text-xs truncate max-w-[200px]">
-                        {path.split("/").pop()}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-gold h-7"
-                        onClick={() => openDocument(path)}
-                      >
-                        Visualizar
-                      </Button>
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-xs font-bold text-foreground truncate max-w-[200px]">
+                          {doc.name}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground truncate max-w-[200px]">
+                          {doc.file_path.split("/").pop()}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-gold h-7 font-semibold"
+                          onClick={() => openDocument(doc.file_path)}
+                        >
+                          Visualizar
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-danger hover:text-danger hover:bg-danger/10 h-7"
+                          onClick={() => handleDeleteDocument(doc.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
+                  {(!documents || documents.length === 0) && (
+                    <p className="text-xs text-muted-foreground text-center py-6 italic">
+                      Nenhum documento cadastrado para este cliente.
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex flex-col gap-2">

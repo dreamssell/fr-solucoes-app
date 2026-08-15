@@ -168,3 +168,65 @@ export const getUploadUrl = createServerFn({ method: "POST" })
     if (error) throw error;
     return { url: uploadData.signedUrl, path: filePath, token: uploadData.token };
   });
+
+export const getClientDocuments = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .validator((clientId: string) => z.string().uuid().parse(clientId))
+  .handler(async ({ data: clientId, context }) => {
+    const { supabase } = context;
+    const { data, error } = await supabase
+      .from("client_documents")
+      .select("*")
+      .eq("client_id", clientId)
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+    return data;
+  });
+
+export const createClientDocument = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: unknown) =>
+    z
+      .object({
+        client_id: z.string().uuid(),
+        name: z.string().min(1),
+        file_path: z.string().min(1),
+      })
+      .parse(data),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabase } = context;
+    const { data: doc, error } = await supabase
+      .from("client_documents")
+      .insert({
+        client_id: data.client_id,
+        name: data.name,
+        file_path: data.file_path,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    return doc;
+  });
+
+export const deleteClientDocument = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((id: string) => z.string().uuid().parse(id))
+  .handler(async ({ data: id, context }) => {
+    const { supabase } = context;
+
+    // Get document file path first to delete from storage
+    const { data: doc } = await supabase
+      .from("client_documents")
+      .select("file_path")
+      .eq("id", id)
+      .single();
+
+    if (doc?.file_path) {
+      await supabase.storage.from("documents").remove([doc.file_path]);
+    }
+
+    const { error } = await supabase.from("client_documents").delete().eq("id", id);
+    if (error) throw error;
+    return { success: true };
+  });
