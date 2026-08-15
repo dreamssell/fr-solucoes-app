@@ -245,7 +245,7 @@ function Clientes() {
       if (formData.create_initial_loan && client?.id) {
         const selectedEmployee = dbEmployees?.find(e => e.id === formData.employee_id);
         const commissionRate = selectedEmployee?.commission_rate_percent ?? 10;
-        
+
         await requestLoanApprovalFn({
           data: {
             client_id: client.id,
@@ -525,7 +525,7 @@ function Clientes() {
                   </Button>
                 )}
               </div>
-              
+
               <div className="space-y-3 mt-2">
                 {newDocs.map((doc) => (
                   <div key={doc.id} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-end border border-border/40 p-2.5 rounded-lg bg-surface/50">
