@@ -49,7 +49,7 @@ type ClientRow = Database["public"]["Tables"]["clients"]["Row"] & {
 type EmployeeRow = Database["public"]["Tables"]["employees"]["Row"];
 type PenaltyKind = Database["public"]["Enums"]["penalty_kind"];
 
-export const Route = createFileRoute("/_authenticated/clientes")({
+export const Route = createFileRoute("/_authenticated/clientes2")({
   validateSearch: (search: Record<string, unknown>) => ({
     q: typeof search["q"] === "string" ? search["q"] : undefined,
   }),

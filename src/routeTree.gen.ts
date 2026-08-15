@@ -13,7 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthenticatedAcertosRouteImport } from './routes/_authenticated/acertos'
 import { Route as AuthenticatedAuditoriaRouteImport } from './routes/_authenticated/auditoria'
-import { Route as AuthenticatedClientesRouteImport } from './routes/_authenticated/clientes'
+import { Route as AuthenticatedClientes2RouteImport } from './routes/_authenticated/clientes2'
 import { Route as AuthenticatedCobrancasRouteImport } from './routes/_authenticated/cobrancas'
 import { Route as AuthenticatedConfiguracoesRouteImport } from './routes/_authenticated/configuracoes'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
@@ -40,9 +40,9 @@ const AuthenticatedAuditoriaRoute = AuthenticatedAuditoriaRouteImport.update({
   path: '/auditoria',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const AuthenticatedClientesRoute = AuthenticatedClientesRouteImport.update({
-  id: '/clientes',
-  path: '/clientes',
+const AuthenticatedClientes2Route = AuthenticatedClientes2RouteImport.update({
+  id: '/clientes2',
+  path: '/clientes2',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedCobrancasRoute = AuthenticatedCobrancasRouteImport.update({
@@ -84,7 +84,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/acertos': typeof AuthenticatedAcertosRoute
   '/auditoria': typeof AuthenticatedAuditoriaRoute
-  '/clientes': typeof AuthenticatedClientesRoute
+  '/clientes2': typeof AuthenticatedClientes2Route
   '/cobrancas': typeof AuthenticatedCobrancasRoute
   '/configuracoes': typeof AuthenticatedConfiguracoesRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -96,7 +96,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/acertos': typeof AuthenticatedAcertosRoute
   '/auditoria': typeof AuthenticatedAuditoriaRoute
-  '/clientes': typeof AuthenticatedClientesRoute
+  '/clientes2': typeof AuthenticatedClientes2Route
   '/cobrancas': typeof AuthenticatedCobrancasRoute
   '/configuracoes': typeof AuthenticatedConfiguracoesRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
@@ -110,7 +110,7 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/_authenticated/acertos': typeof AuthenticatedAcertosRoute
   '/_authenticated/auditoria': typeof AuthenticatedAuditoriaRoute
-  '/_authenticated/clientes': typeof AuthenticatedClientesRoute
+  '/_authenticated/clientes2': typeof AuthenticatedClientes2Route
   '/_authenticated/cobrancas': typeof AuthenticatedCobrancasRoute
   '/_authenticated/configuracoes': typeof AuthenticatedConfiguracoesRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
@@ -124,7 +124,7 @@ export interface FileRouteTypes {
     | '/'
     | '/acertos'
     | '/auditoria'
-    | '/clientes'
+    | '/clientes2'
     | '/cobrancas'
     | '/configuracoes'
     | '/dashboard'
@@ -136,7 +136,7 @@ export interface FileRouteTypes {
     | '/'
     | '/acertos'
     | '/auditoria'
-    | '/clientes'
+    | '/clientes2'
     | '/cobrancas'
     | '/configuracoes'
     | '/dashboard'
@@ -149,7 +149,7 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/_authenticated/acertos'
     | '/_authenticated/auditoria'
-    | '/_authenticated/clientes'
+    | '/_authenticated/clientes2'
     | '/_authenticated/cobrancas'
     | '/_authenticated/configuracoes'
     | '/_authenticated/dashboard'
@@ -193,11 +193,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAuditoriaRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/clientes': {
-      id: '/_authenticated/clientes'
-      path: '/clientes'
-      fullPath: '/clientes'
-      preLoaderRoute: typeof AuthenticatedClientesRouteImport
+    '/_authenticated/clientes2': {
+      id: '/_authenticated/clientes2'
+      path: '/clientes2'
+      fullPath: '/clientes2'
+      preLoaderRoute: typeof AuthenticatedClientes2RouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/cobrancas': {
@@ -248,7 +248,7 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAcertosRoute: typeof AuthenticatedAcertosRoute
   AuthenticatedAuditoriaRoute: typeof AuthenticatedAuditoriaRoute
-  AuthenticatedClientesRoute: typeof AuthenticatedClientesRoute
+  AuthenticatedClientes2Route: typeof AuthenticatedClientes2Route
   AuthenticatedCobrancasRoute: typeof AuthenticatedCobrancasRoute
   AuthenticatedConfiguracoesRoute: typeof AuthenticatedConfiguracoesRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
@@ -260,7 +260,7 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAcertosRoute: AuthenticatedAcertosRoute,
   AuthenticatedAuditoriaRoute: AuthenticatedAuditoriaRoute,
-  AuthenticatedClientesRoute: AuthenticatedClientesRoute,
+  AuthenticatedClientes2Route: AuthenticatedClientes2Route,
   AuthenticatedCobrancasRoute: AuthenticatedCobrancasRoute,
   AuthenticatedConfiguracoesRoute: AuthenticatedConfiguracoesRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
