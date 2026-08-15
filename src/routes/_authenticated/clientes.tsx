@@ -49,7 +49,7 @@ type ClientRow = Database["public"]["Tables"]["clients"]["Row"] & {
 type EmployeeRow = Database["public"]["Tables"]["employees"]["Row"];
 type PenaltyKind = Database["public"]["Enums"]["penalty_kind"];
 
-export const Route = createFileRoute("/_authenticated/clientes2")({
+export const Route = createFileRoute("/_authenticated/clientes")({
   validateSearch: (search: Record<string, unknown>) => ({
     q: typeof search["q"] === "string" ? search["q"] : undefined,
   }),
@@ -690,9 +690,9 @@ export function ClientePainel({
   const queryClient = useQueryClient();
 
   const { data: documents, refetch: refetchDocuments } = useQuery({
-    queryKey: ["client-documents", cliente.id],
-    queryFn: () => getClientDocumentsFn({ data: cliente.id }),
-    enabled: !!cliente.id,
+    queryKey: ["client-documents", cliente?.id],
+    queryFn: () => getClientDocumentsFn({ data: cliente?.id }),
+    enabled: !!cliente?.id,
   });
 
   const [configPenaltyKind, setConfigPenaltyKind] = useState<PenaltyKind>(cliente?.penalty_kind ?? "nenhuma");
