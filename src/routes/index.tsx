@@ -44,7 +44,6 @@ function Login() {
   const search = Route.useSearch();
   const [checking, setChecking] = useState(true);
   const [signingIn, setSigningIn] = useState(false);
-  const [showEmailLogin, setShowEmailLogin] = useState(false);
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
 
@@ -89,27 +88,6 @@ function Login() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function entrarComGoogle() {
-    setSigningIn(true);
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: window.location.origin,
-        },
-      });
-      if (error) {
-        toast.error(CANCELLED_MESSAGE);
-        setSigningIn(false);
-        return;
-      }
-    } catch {
-      toast.error(CANCELLED_MESSAGE);
-    } finally {
-      setSigningIn(false);
-    }
-  }
-
   async function entrarComEmail(e: React.FormEvent) {
     e.preventDefault();
     if (!email || !senha) {
@@ -118,7 +96,7 @@ function Login() {
     }
     setSigningIn(true);
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { error } = await supabase.auth.signInWithPassword({
         email,
         password: senha,
       });
@@ -169,77 +147,47 @@ function Login() {
             Acesso Restrito
           </div>
 
-          {!showEmailLogin ? (
-            <>
-              <Button
-                className="h-12 w-full bg-gold font-bold text-primary-foreground hover:bg-gold-soft transition-all active:scale-[0.98]"
-                disabled={checking || signingIn}
-                onClick={entrarComGoogle}
-              >
-                <GoogleMark />
-                {checking ? "Verificando acesso…" : "Entrar com Google"}
-              </Button>
-
-              <button
-                type="button"
-                onClick={() => setShowEmailLogin(true)}
-                className="mt-4 w-full text-center text-xs font-semibold text-gold/80 hover:text-gold hover:underline transition-colors"
-              >
-                Entrar com e-mail e senha
-              </button>
-            </>
-          ) : (
-            <form onSubmit={entrarComEmail} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">E-mail</label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
-                  <Input
-                    type="email"
-                    placeholder="exemplo@frfinanceiro.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="pl-10"
-                    disabled={signingIn}
-                    required
-                  />
-                </div>
+          <form onSubmit={entrarComEmail} className="space-y-4">
+            <div className="space-y-1">
+              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">E-mail</label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
+                <Input
+                  type="email"
+                  placeholder="exemplo@frfinanceiro.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="pl-10"
+                  disabled={signingIn || checking}
+                  required
+                />
               </div>
+            </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Senha</label>
-                <div className="relative">
-                  <Key className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
-                  <Input
-                    type="password"
-                    placeholder="Sua senha"
-                    value={senha}
-                    onChange={(e) => setSenha(e.target.value)}
-                    className="pl-10"
-                    disabled={signingIn}
-                    required
-                  />
-                </div>
+            <div className="space-y-1">
+              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Senha</label>
+              <div className="relative">
+                <Key className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
+                <Input
+                  type="password"
+                  placeholder="Sua senha"
+                  value={senha}
+                  onChange={(e) => setSenha(e.target.value)}
+                  className="pl-10"
+                  disabled={signingIn || checking}
+                  required
+                />
               </div>
+            </div>
 
-              <Button
-                type="submit"
-                className="h-12 w-full bg-gold font-bold text-primary-foreground hover:bg-gold-soft transition-all active:scale-[0.98] mt-2"
-                disabled={signingIn}
-              >
-                {signingIn ? "Entrando..." : "Entrar"}
-              </Button>
-
-              <button
-                type="button"
-                onClick={() => setShowEmailLogin(false)}
-                className="mt-2 w-full text-center text-xs font-semibold text-muted-foreground hover:text-foreground hover:underline transition-colors"
-                disabled={signingIn}
-              >
-                Voltar para login do Google
-              </button>
-            </form>
-          )}
+            <Button
+              type="submit"
+              className="h-12 w-full bg-gold font-bold text-primary-foreground hover:bg-gold-soft transition-all active:scale-[0.98] mt-2"
+              disabled={signingIn || checking}
+            >
+              {checking ? "Verificando acesso…" : signingIn ? "Entrando..." : "Entrar com E-mail"}
+            </Button>
+          </form>
 
           <p className="mt-4 text-center text-[11px] leading-relaxed text-muted-foreground">
             Acesso restrito a contas previamente autorizadas no sistema.

@@ -13,6 +13,7 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
+  Settings,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,15 @@ import { cn } from "@/lib/utils";
 import { useSignOut } from "@/hooks/use-sign-out";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const getNav = (role?: string | null) => {
   const items = [
@@ -30,6 +40,7 @@ const getNav = (role?: string | null) => {
     { to: "/recebimentos", label: "Recebimentos", icon: Wallet },
     { to: "/acertos", label: "Acertos", icon: Scale },
     { to: "/funcionarios", label: "Funcionários", icon: UserCog },
+    { to: "/configuracoes", label: "Configurações", icon: Settings },
   ];
   if (role === "owner") {
     items.push({ to: "/auditoria", label: "Auditoria", icon: History });
@@ -139,6 +150,40 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const sair = useSignOut();
 
+  const { data: userProfile } = useQuery({
+    queryKey: ["userProfileHeader"],
+    queryFn: async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return null;
+        
+        let avatarUrl: string | null = null;
+        const pathOrUrl = user.user_metadata?.avatar_url;
+        if (pathOrUrl) {
+          if (pathOrUrl.startsWith("http")) {
+            avatarUrl = pathOrUrl;
+          } else {
+            const { data, error } = await supabase.storage
+              .from("documents")
+              .createSignedUrl(pathOrUrl, 3600);
+            if (!error && data) {
+              avatarUrl = data.signedUrl;
+            }
+          }
+        }
+
+        return {
+          id: user.id,
+          email: user.email,
+          nome: user.user_metadata?.full_name || "",
+          avatarUrl,
+        };
+      } catch {
+        return null;
+      }
+    },
+  });
+
   return (
     <div className="min-h-screen w-full bg-background">
       <aside
@@ -227,9 +272,51 @@ export function AppShell({ children }: { children: ReactNode }) {
 
           <div className="ml-auto flex items-center gap-3">
             <DemoBadge className="hidden sm:inline-flex" />
-            <div className="grid h-9 w-9 place-items-center rounded-full border border-border bg-surface text-xs font-semibold text-gold">
-              FR
-            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button type="button" className="outline-none">
+                  <Avatar className="h-9 w-9 border border-border bg-surface cursor-pointer select-none">
+                    {userProfile?.avatarUrl ? (
+                      <AvatarImage src={userProfile.avatarUrl} alt={userProfile.nome} className="object-cover" />
+                    ) : null}
+                    <AvatarFallback className="text-xs font-semibold text-gold bg-surface">
+                      {userProfile?.nome
+                        ? userProfile.nome.split(" ").slice(0, 2).map((n: string) => n[0]).join("").toUpperCase()
+                        : userProfile?.email
+                        ? userProfile.email.slice(0, 2).toUpperCase()
+                        : "FR"}
+                    </AvatarFallback>
+                  </Avatar>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56 bg-card border-border">
+                {userProfile ? (
+                  <>
+                    <DropdownMenuLabel className="font-normal">
+                      <div className="flex flex-col space-y-1">
+                        <p className="text-sm font-semibold leading-none truncate">{userProfile.nome || "Usuário"}</p>
+                        <p className="text-xs leading-none text-muted-foreground truncate">{userProfile.email}</p>
+                      </div>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator className="bg-border" />
+                  </>
+                ) : null}
+                <DropdownMenuItem asChild className="hover:bg-muted/50 cursor-pointer">
+                  <Link to="/configuracoes" className="flex w-full items-center gap-2 text-sm text-foreground">
+                    <Settings className="h-4 w-4 text-gold" />
+                    Configurações
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="bg-border" />
+                <DropdownMenuItem
+                  onClick={sair}
+                  className="hover:bg-muted/50 cursor-pointer text-danger focus:text-danger flex items-center gap-2 text-sm"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sair
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </header>
 
