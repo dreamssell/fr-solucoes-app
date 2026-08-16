@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import { Search, Plus, Info, ChevronDown, Loader2 } from "lucide-react";
 import { AppShell, PageHeader } from "@/components/fr/AppShell";
 import { StatusPill } from "@/components/fr/bits";
@@ -96,6 +98,13 @@ function Emprestimos() {
   const { data: dbEmployees } = useEmployees();
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [busca, funcFilter, freqFilter]);
+
   const [newLoan, setNewLoan] = useState({
     clienteId: "",
     capital: "",
@@ -152,6 +161,169 @@ function Emprestimos() {
     [lista],
   );
 
+  const listaPaginada = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return lista.slice(startIndex, startIndex + pageSize);
+  }, [lista, currentPage, pageSize]);
+
+  const handleExportPDF = () => {
+    try {
+      const doc = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
+
+      // 1. Header background styling (Elegant Dark Gold/Black header banner)
+      doc.setFillColor(18, 18, 18); // Graphite #121212
+      doc.rect(0, 0, 210, 38, "F");
+
+      // Draw stylized gold stripes/logo in header
+      doc.setFillColor(212, 175, 55); // Gold #D4AF37
+      doc.rect(15, 10, 12, 12, "F");
+      
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.text("FR", 19, 18);
+
+      // FR Financeiro Title
+      doc.setFontSize(16);
+      doc.text("FR FINANCEIRO", 32, 18);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(180, 180, 180);
+      doc.text("Sistema de Gestão de Contratos de Crédito", 32, 23);
+
+      // Report Info
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.text("RELATÓRIO DE CONTRATOS", 135, 18);
+      
+      const todayStr = new Date().toLocaleString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(180, 180, 180);
+      doc.text(`Emissão: ${todayStr}`, 135, 23);
+
+      // Horizontal separator line under header
+      doc.setDrawColor(212, 175, 55);
+      doc.setLineWidth(1.5);
+      doc.line(0, 38, 210, 38);
+
+      // 2. Summary Card Section (Capital Investido, Lucro FR, Lucro Funcionários)
+      doc.setFillColor(245, 245, 245);
+      doc.rect(15, 45, 180, 24, "F");
+      
+      doc.setTextColor(100, 100, 100);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7);
+      doc.text("CAPITAL INVESTIDO", 25, 52);
+      doc.text("PREVISÃO LUCRO FR", 85, 52);
+      doc.text("LUCRO FUNCIONÁRIOS", 145, 52);
+
+      doc.setTextColor(18, 18, 18);
+      doc.setFontSize(11);
+      doc.text(formatBRL(totais.capital / 100), 25, 59);
+      
+      doc.setTextColor(212, 175, 55); // Gold
+      doc.text(formatBRL(totais.fr / 100), 85, 59);
+      
+      doc.setTextColor(46, 117, 89); // Green
+      doc.text(formatBRL(totais.func / 100), 145, 59);
+
+      // 3. Filter info text
+      let filterText = "Filtros aplicados: ";
+      if (busca) filterText += `Busca: "${busca}" | `;
+      filterText += `Responsável: ${
+        funcFilter === "todos"
+          ? "Todos"
+          : dbEmployees?.find((e) => e.id === funcFilter)?.full_name || "Todos"
+      } | `;
+      filterText += `Periodicidade: ${
+        freqFilter === "todos"
+          ? "Todas"
+          : freqFilter.charAt(0).toUpperCase() + freqFilter.slice(1)
+      }`;
+
+      doc.setTextColor(120, 120, 120);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.5);
+      doc.text(filterText, 15, 76);
+
+      // 4. Generate data rows for PDF AutoTable
+      const tableHeaders = [
+        ["Cliente", "Responsável", "Periodicidade", "Parcelas", "Capital", "Total Geral", "Vencimento"],
+      ];
+
+      const tableData = lista.map((loan) => {
+        const sortedInst = loan.installments ? [...loan.installments].sort((a, b) => a.number - b.number) : [];
+        const firstDueDate = sortedInst[0]?.due_date || loan.start_date;
+        const dayOfWeek = firstDueDate ? getDayOfWeekName(firstDueDate) : "";
+
+        return [
+          loan.clients?.full_name || "Desconhecido",
+          loan.employees?.full_name || "—",
+          loan.frequency.toUpperCase(),
+          `${loan.installments_count.toString().padStart(2, "0")}x`,
+          formatBRL(loan.principal_amount / 100),
+          formatBRL(loan.total_amount / 100),
+          loan.frequency === "semanal" && dayOfWeek ? `Toda ${dayOfWeek}` : "Conforme parcelas",
+        ];
+      });
+
+      // 5. Render autoTable
+      autoTable(doc, {
+        head: tableHeaders,
+        body: tableData,
+        startY: 80,
+        margin: { left: 15, right: 15 },
+        theme: "striped",
+        headStyles: {
+          fillColor: [18, 18, 18],
+          textColor: [255, 255, 255],
+          fontSize: 8,
+          fontStyle: "bold",
+          halign: "left",
+        },
+        bodyStyles: {
+          fontSize: 8,
+          textColor: [50, 50, 50],
+        },
+        columnStyles: {
+          4: { halign: "right" },
+          5: { halign: "right" },
+        },
+        didDrawPage: (data) => {
+          // Footer
+          const pageCount = doc.getNumberOfPages();
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(7.5);
+          doc.setTextColor(150, 150, 150);
+          doc.text(
+            `FR Financeiro - Página ${data.pageNumber} de ${pageCount}`,
+            15,
+            doc.internal.pageSize.height - 10
+          );
+        },
+      });
+
+      // Save PDF
+      doc.save(`FR_Financeiro_Relatorio_Contratos_${new Date().toISOString().slice(0, 10)}.pdf`);
+      toast.success("PDF exportado com sucesso!");
+    } catch (err) {
+      console.error(err);
+      toast.error("Erro ao gerar arquivo PDF");
+    }
+  };
+
   const handleCreate = async () => {
     if (!newLoan.clienteId || !newLoan.capital || !newLoan.qtdParcelas) {
       toast.error("Preencha todos os campos obrigatórios");
@@ -195,12 +367,21 @@ function Emprestimos() {
         title="Empréstimos"
         description={`${lista.length} contratos ativos`}
         actions={
-          <Button
-            onClick={() => setIsNewLoanOpen(true)}
-            className="bg-gold text-black hover:bg-gold/90"
-          >
-            <Plus className="mr-2 h-4 w-4" /> Novo Empréstimo
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={handleExportPDF}
+              className="border-gold text-gold hover:bg-gold/10 font-bold"
+            >
+              Exportar PDF
+            </Button>
+            <Button
+              onClick={() => setIsNewLoanOpen(true)}
+              className="bg-gold text-black hover:bg-gold/90"
+            >
+              <Plus className="mr-2 h-4 w-4" /> Novo Empréstimo
+            </Button>
+          </div>
         }
       />
 
@@ -261,7 +442,7 @@ function Emprestimos() {
             <p className="text-sm">Carregando contratos reais...</p>
           </div>
         ) : (
-          lista.map((e) => {
+          listaPaginada.map((e) => {
             const sortedInst = e.installments ? [...e.installments].sort((a, b) => a.number - b.number) : [];
             const firstDueDate = sortedInst[0]?.due_date || e.start_date;
             const dayOfWeek = firstDueDate ? getDayOfWeekName(firstDueDate) : "";
@@ -370,6 +551,82 @@ function Emprestimos() {
           </p>
         )}
       </div>
+
+      {/* Pagination controls */}
+      {!isLoadingLoans && lista.length > 0 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground mt-4">
+          <div className="flex items-center gap-2">
+            <span>Mostrar</span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              className="rounded-md border border-border bg-background px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-gold text-xs"
+            >
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+            <span>por página</span>
+          </div>
+
+          <div className="text-xs text-center sm:text-left">
+            Exibindo <span className="font-bold text-foreground">{Math.min((currentPage - 1) * pageSize + 1, lista.length)}</span> a{" "}
+            <span className="font-bold text-foreground">{Math.min(currentPage * pageSize, lista.length)}</span> de{" "}
+            <span className="font-bold text-foreground">{lista.length}</span> empréstimos
+          </div>
+
+          <div className="flex items-center gap-1.5 text-xs">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs font-semibold"
+              onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+              disabled={currentPage === 1}
+            >
+              Anterior
+            </Button>
+            
+            {/* Page numbers list */}
+            {(() => {
+              const totalPages = Math.ceil(lista.length / pageSize);
+              const pages = [];
+              let startPage = Math.max(1, currentPage - 2);
+              let endPage = Math.min(totalPages, startPage + 4);
+              if (endPage - startPage < 4) {
+                startPage = Math.max(1, endPage - 4);
+              }
+
+              for (let i = startPage; i <= endPage; i++) {
+                pages.push(
+                  <Button
+                    key={i}
+                    variant={currentPage === i ? "default" : "outline"}
+                    size="sm"
+                    className={`h-8 w-8 text-xs ${currentPage === i ? "bg-gold text-black hover:bg-gold/90 font-bold" : ""}`}
+                    onClick={() => setCurrentPage(i)}
+                  >
+                    {i}
+                  </Button>
+                );
+              }
+              return pages;
+            })()}
+
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs font-semibold"
+              onClick={() => setCurrentPage((p) => Math.min(p + 1, Math.ceil(lista.length / pageSize)))}
+              disabled={currentPage === Math.ceil(lista.length / pageSize)}
+            >
+              Próximo
+            </Button>
+          </div>
+        </div>
+      )}
 
       <Dialog open={isNewLoanOpen} onOpenChange={setIsNewLoanOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
