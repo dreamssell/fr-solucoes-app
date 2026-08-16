@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { Search, Plus, Info, ChevronDown, Loader2, ShieldAlert } from "lucide-react";
+import { Search, Plus, Info, ChevronDown, Loader2 } from "lucide-react";
 import { AppShell, PageHeader } from "@/components/fr/AppShell";
 import { StatusPill } from "@/components/fr/bits";
 import { Input } from "@/components/ui/input";
@@ -33,11 +33,6 @@ import { useClients } from "@/hooks/use-clients";
 import { useEmployees } from "@/hooks/use-employees";
 import { RenegociarButton, RenegociacoesPanel } from "@/components/fr/Renegociacao";
 import { useMyRole } from "@/hooks/use-renegotiations";
-import {
-  canDecideApproval,
-  decisionBlockedMessage,
-  type ActorRole,
-} from "@/finance/approval-permissions";
 import { Database } from "@/integrations/supabase/types";
 import { toPillStatus } from "@/lib/status";
 
@@ -70,59 +65,15 @@ function Emprestimos() {
   const [funcFilter, setFuncFilter] = useState("todos");
   const [freqFilter, setFreqFilter] = useState("todos");
   const [isNewLoanOpen, setIsNewLoanOpen] = useState(false);
-  const [selectedPendentes, setSelectedPendentes] = useState<string[]>([]);
-
   const {
     data: dbLoans,
     requestLoanApproval,
-    decideLoanApproval,
     isRequesting,
-    isDeciding,
     isLoading: isLoadingLoans,
   } = useLoans();
   const { data: dbClients } = useClients();
   const { data: dbEmployees } = useEmployees();
-  const { data: me } = useMyRole();
   const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
-  const [rejectReasons, setRejectReasons] = useState<Record<string, string>>({});
-
-  const pendentes = useMemo(
-    () =>
-      ((dbLoans ?? []) as unknown as LoanRow[]).filter(
-        (e) => e.approval_status === "pending_approval",
-      ),
-    [dbLoans],
-  );
-
-  const handleBulkDecide = async (decision: "approved" | "rejected") => {
-    const decs = selectedPendentes.filter(id => {
-      const p = pendentes.find(x => x.id === id);
-      const actor = me ? { userId: me.userId, role: me.role as ActorRole } : null;
-      return p && canDecideApproval(actor, { requested_by: p.requested_by ?? null });
-    });
-    if (decs.length === 0) {
-      toast.error("Nenhum empréstimo selecionado elegível para aprovação.");
-      return;
-    }
-
-    const bulkReason = (rejectReasons["bulk"] ?? "").trim();
-    if (decision === "rejected" && bulkReason.length < 5) {
-      toast.error("A rejeição em lote exige uma justificativa geral (mínimo 5 caracteres).");
-      return;
-    }
-
-    try {
-      toast.loading("Processando decisões...", { id: "bulk-decide" });
-      await Promise.all(
-        decs.map(id => decideLoanApproval({ loan_id: id, decision, reason: decision === "rejected" ? bulkReason : undefined }))
-      );
-      toast.success("Decisões registradas com sucesso!", { id: "bulk-decide" });
-      setSelectedPendentes([]);
-      setRejectReasons(s => ({ ...s, bulk: "" }));
-    } catch {
-      toast.error("Erro ao registrar decisões em lote.", { id: "bulk-decide" });
-    }
-  };
 
   const [newLoan, setNewLoan] = useState({
     clienteId: "",
@@ -215,19 +166,7 @@ function Emprestimos() {
     }
   };
 
-  const handleDecide = async (loanId: string, decision: "approved" | "rejected") => {
-    const reason = (rejectReasons[loanId] ?? "").trim();
-    if (decision === "rejected" && reason.length < 5) {
-      toast.error("Rejeição exige justificativa com pelo menos 5 caracteres.");
-      return;
-    }
-    try {
-      await decideLoanApproval({ loan_id: loanId, decision, reason });
-      setRejectReasons((s) => ({ ...s, [loanId]: "" }));
-    } catch {
-      // handled by hook
-    }
-  };
+
 
   return (
     <AppShell>
@@ -254,161 +193,7 @@ function Emprestimos() {
         />
       </div>
 
-      {pendentes.length > 0 && (
-        <section className="rounded-xl border border-gold/40 bg-gold/5 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gold/20 pb-2">
-            <h2 className="font-display text-sm font-bold uppercase tracking-wider text-gold">
-              Aguardando aprovação ({pendentes.length})
-            </h2>
-            {pendentes.some((p) => {
-              const actor = me ? { userId: me.userId, role: me.role as ActorRole } : null;
-              return canDecideApproval(actor, { requested_by: p.requested_by ?? null });
-            }) && (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Checkbox
-                  checked={
-                    selectedPendentes.length > 0 &&
-                    selectedPendentes.length ===
-                      pendentes.filter((p) => {
-                        const actor = me ? { userId: me.userId, role: me.role as ActorRole } : null;
-                        return canDecideApproval(actor, { requested_by: p.requested_by ?? null });
-                      }).length
-                  }
-                  onCheckedChange={(checked) => {
-                    if (checked) {
-                      const decs = pendentes
-                        .filter((p) => {
-                          const actor = me ? { userId: me.userId, role: me.role as ActorRole } : null;
-                          return canDecideApproval(actor, { requested_by: p.requested_by ?? null });
-                        })
-                        .map((p) => p.id);
-                      setSelectedPendentes(decs);
-                    } else {
-                      setSelectedPendentes([]);
-                    }
-                  }}
-                />
-                <span>Selecionar todos elegíveis</span>
-              </div>
-            )}
-          </div>
-          <p className="mt-2 text-xs text-muted-foreground">
-            A decisão é validada no banco: ninguém aprova a própria solicitação e funcionários não
-            decidem.
-          </p>
-          <ul className="mt-3 space-y-3">
-            {pendentes.map((p) =>
-              (() => {
-                const actor = me ? { userId: me.userId, role: me.role as ActorRole } : null;
-                const podeDecidir = canDecideApproval(actor, {
-                  requested_by: p.requested_by ?? null,
-                });
-                const bloqueio = decisionBlockedMessage(actor, {
-                  requested_by: p.requested_by ?? null,
-                });
-                return (
-                  <li key={p.id} className="rounded-lg border border-border bg-card p-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-3 min-w-0">
-                        {podeDecidir && (
-                          <Checkbox
-                            checked={selectedPendentes.includes(p.id)}
-                            onCheckedChange={(checked) => {
-                              setSelectedPendentes((s) =>
-                                checked ? [...s, p.id] : s.filter((x) => x !== p.id),
-                              );
-                            }}
-                          />
-                        )}
-                        <div className="min-w-0">
-                          <p className="truncate font-semibold">
-                            {p.clients?.full_name ?? "Cliente"}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatBRL(p.principal_amount / 100)} · {p.installments_count}x ·{" "}
-                            {p.frequency}
-                          </p>
-                        </div>
-                      </div>
-                      <span className="rounded-full border border-gold/40 bg-gold/10 px-2.5 py-0.5 text-[10px] font-bold uppercase text-gold">
-                        Aguardando aprovação
-                      </span>
-                    </div>
-                    {!podeDecidir ? (
-                      <p className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
-                        <ShieldAlert className="h-3.5 w-3.5" />
-                        {bloqueio}
-                      </p>
-                    ) : (
-                      <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
-                        <Input
-                          placeholder="Justificativa (obrigatória para rejeitar)"
-                          value={rejectReasons[p.id] ?? ""}
-                          onChange={(e) =>
-                            setRejectReasons((s) => ({ ...s, [p.id]: e.target.value }))
-                          }
-                        />
-                        <Button
-                          size="sm"
-                          className="bg-success text-primary-foreground hover:bg-success/90"
-                          disabled={isDeciding}
-                          onClick={() => handleDecide(p.id, "approved")}
-                        >
-                          Aprovar
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="border-danger/40 text-danger hover:bg-danger/10 hover:text-danger"
-                          disabled={isDeciding}
-                          onClick={() => handleDecide(p.id, "rejected")}
-                        >
-                          Rejeitar
-                        </Button>
-                      </div>
-                    )}
-                  </li>
-                );
-              })(),
-            )}
-          </ul>
 
-          {selectedPendentes.length > 0 && (
-            <div className="mt-4 rounded-lg border border-gold/30 bg-gold/10 p-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <span className="text-xs font-semibold text-gold">
-                {selectedPendentes.length} contrato(s) selecionado(s) para decisão em lote
-              </span>
-              <div className="flex flex-wrap items-center gap-2">
-                <Input
-                  placeholder="Justificativa em lote (rejeição)"
-                  value={rejectReasons["bulk"] ?? ""}
-                  onChange={(e) =>
-                    setRejectReasons((s) => ({ ...s, bulk: e.target.value }))
-                  }
-                  className="h-9 max-w-[200px]"
-                />
-                <Button
-                  size="sm"
-                  className="bg-success text-primary-foreground hover:bg-success/90 h-9"
-                  disabled={isDeciding}
-                  onClick={() => handleBulkDecide("approved")}
-                >
-                  Aprovar Selecionados
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="border-danger/40 text-danger hover:bg-danger/10 hover:text-danger h-9"
-                  disabled={isDeciding}
-                  onClick={() => handleBulkDecide("rejected")}
-                >
-                  Rejeitar Selecionados
-                </Button>
-              </div>
-            </div>
-          )}
-        </section>
-      )}
 
       <div className="grid gap-3 rounded-xl border border-border bg-card p-4 sm:grid-cols-[minmax(0,1fr)_200px_200px]">
         <div className="relative">
