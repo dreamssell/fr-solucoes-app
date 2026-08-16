@@ -4,6 +4,8 @@
  * Todos os valores monetários são inteiros em CENTAVOS (nunca float).
  */
 
+import { calculateDueDate } from "./calculate-due-date";
+
 export type Frequencia = "diario" | "semanal" | "quinzenal" | "mensal";
 
 export const FR_DEFAULT_RATES: Record<Frequencia, number> = {
@@ -34,6 +36,8 @@ export interface LoanInput {
   qtdParcelas: number;
   /** Taxa excepcional da FR para este empréstimo (fração, ex.: 0.15). */
   taxaFrExcepcional?: number;
+  applyInterestComposition?: boolean;
+  startDate?: Date;
 }
 
 export interface LoanCalculado {
@@ -102,14 +106,24 @@ export function buildLoan(input: LoanInput): LoanCalculado {
   if (!Number.isInteger(input.qtdParcelas) || input.qtdParcelas < 1) {
     throw new Error("quantidade de parcelas deve ser >= 1");
   }
-  const taxaFr = input.taxaFrExcepcional ?? FR_DEFAULT_RATES[input.frequencia];
+  let taxaFr = input.taxaFrExcepcional ?? FR_DEFAULT_RATES[input.frequencia];
   if (taxaFr === undefined) throw new Error("frequência inválida");
-  const lucroFrCents = frProfitCents(input.capitalCents, input.frequencia, input.taxaFrExcepcional);
-  const lucroFuncionarioCents = employeeProfitCents(input.capitalCents, input.lucroFuncionario);
-  const totalCents = input.capitalCents + lucroFrCents + lucroFuncionarioCents;
-  if (totalCents !== input.capitalCents + lucroFrCents + lucroFuncionarioCents) {
-    throw new Error("total inconsistente");
+
+  // Recomposição de juros
+  if (input.applyInterestComposition !== false && input.startDate) {
+    const lastDueDate = calculateDueDate(input.startDate, input.qtdParcelas, input.frequencia);
+    const durationDays = Math.ceil((lastDueDate.getTime() - input.startDate.getTime()) / (24 * 60 * 60 * 1000));
+    if (durationDays > 30) {
+      const additionalMonths = Math.ceil((durationDays - 30) / 30);
+      taxaFr += additionalMonths * 0.3;
+    }
   }
+
+  const totalProfitCents = Math.round(input.capitalCents * taxaFr);
+  const lucroFuncionarioCents = employeeProfitCents(input.capitalCents, input.lucroFuncionario);
+  const lucroFrCents = totalProfitCents - lucroFuncionarioCents;
+  const totalCents = input.capitalCents + totalProfitCents;
+
   return {
     capitalCents: input.capitalCents,
     frequencia: input.frequencia,

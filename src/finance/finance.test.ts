@@ -58,12 +58,13 @@ describe("FR Financeiro - Motor Financeiro (Etapa 4)", () => {
         qtdParcelas: 1,
       });
       expect(loan.lucroFuncionarioCents).toBe(10000);
-      expect(loan.totalCents).toBe(122000);
+      expect(loan.totalCents).toBe(112000);
+      expect(loan.lucroFrCents).toBe(2000);
     });
   });
 
   describe("Exemplo Obrigatório", () => {
-    it("deve bater o exemplo: 1000 capital + 200 FR + 400 func = 1600 total", () => {
+    it("deve bater o exemplo: 1000 capital + 200 FR + 400 func = 1200 total (func deduzido)", () => {
       const loan = buildLoan({
         capitalCents: 100000,
         frequencia: "semanal",
@@ -72,9 +73,9 @@ describe("FR Financeiro - Motor Financeiro (Etapa 4)", () => {
         taxaFrExcepcional: 0.2,
       });
       expect(loan.capitalCents).toBe(100000);
-      expect(loan.lucroFrCents).toBe(20000);
+      expect(loan.lucroFrCents).toBe(-20000);
       expect(loan.lucroFuncionarioCents).toBe(40000);
-      expect(loan.totalCents).toBe(160000);
+      expect(loan.totalCents).toBe(120000);
     });
   });
 
@@ -87,7 +88,7 @@ describe("FR Financeiro - Motor Financeiro (Etapa 4)", () => {
         qtdParcelas: 5,
       });
       expect(loan.parcelas).toHaveLength(5);
-      expect(loan.totalCents).toBe(152000);
+      expect(loan.totalCents).toBe(112000);
     });
 
     it("deve ajustar centavos na última parcela", () => {
@@ -159,6 +160,22 @@ describe("FR Financeiro - Motor Financeiro (Etapa 4)", () => {
           qtdParcelas: 0,
         }),
       ).toThrow();
+    });
+  });
+
+  describe("Recomposição de Juros (+30% a cada 30 dias)", () => {
+    it("deve aplicar recomposição para empréstimo quinzenal de 4 parcelas", () => {
+      const loan = buildLoan({
+        capitalCents: 1000000,
+        frequencia: "quinzenal",
+        lucroFuncionario: { tipo: "fixo", valor: 0 },
+        qtdParcelas: 4,
+        startDate: new Date("2026-08-16T00:00:00Z"),
+        applyInterestComposition: true,
+      });
+      expect(loan.taxaFr).toBe(0.6);
+      expect(loan.lucroFrCents).toBe(600000);
+      expect(loan.totalCents).toBe(1600000);
     });
   });
 });

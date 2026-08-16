@@ -13,6 +13,7 @@ const loanInputSchema = z.object({
   employee_profit_kind: z.enum(["fixo", "percentual"]),
   start_date: z.string(),
   notes: z.string().optional().nullable(),
+  apply_interest_composition: z.boolean().optional(),
 });
 
 const buildTerms = (data: z.infer<typeof loanInputSchema>) => {
@@ -24,6 +25,8 @@ const buildTerms = (data: z.infer<typeof loanInputSchema>) => {
         ? { tipo: "fixo", valor: Math.round(data.employee_profit_input * 100) }
         : { tipo: "percentual", valor: data.employee_profit_input / 100 },
     qtdParcelas: data.installments_count,
+    applyInterestComposition: data.apply_interest_composition,
+    startDate: new Date(data.start_date),
   });
 
   const startDate = new Date(data.start_date);
