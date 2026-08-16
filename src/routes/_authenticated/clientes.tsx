@@ -739,6 +739,7 @@ export function ClientePainel({
 
     setIsSavingConfig(true);
     try {
+      if (!cliente) return;
       await updateClientFn({
         data: {
           id: cliente.id,
@@ -772,6 +773,26 @@ export function ClientePainel({
   const arrears = useMemo(() => {
     return clientLoans.flatMap((l) => (l.installments ?? []).filter((p) => p.status === "vencida"));
   }, [clientLoans]);
+
+  const parsedNotes = useMemo(() => {
+    if (!cliente?.notes) return [];
+    return cliente.notes
+      .split("\n")
+      .filter((line) => line.trim() !== "")
+      .map((line) => {
+        const match = line.match(/^\[(\d{2}\/\d{2}\/\d{4} \d{2}:\d{2})\]\s*(.*)$/);
+        if (match) {
+          return {
+            timestamp: match[1],
+            text: match[2],
+          };
+        }
+        return {
+          timestamp: null,
+          text: line,
+        };
+      });
+  }, [cliente?.notes]);
 
   if (!cliente) return null;
 
@@ -825,26 +846,6 @@ export function ClientePainel({
       toast.error("Erro ao excluir documento");
     }
   };
-
-  const parsedNotes = useMemo(() => {
-    if (!cliente.notes) return [];
-    return cliente.notes
-      .split("\n")
-      .filter((line) => line.trim() !== "")
-      .map((line) => {
-        const match = line.match(/^\[(\d{2}\/\d{2}\/\d{4} \d{2}:\d{2})\]\s*(.*)$/);
-        if (match) {
-          return {
-            timestamp: match[1],
-            text: match[2],
-          };
-        }
-        return {
-          timestamp: null,
-          text: line,
-        };
-      });
-  }, [cliente.notes]);
 
   const handleAddAnnotation = async () => {
     if (!newAnnotation.trim()) return;
@@ -1073,8 +1074,6 @@ export function ClientePainel({
                   Registro de comunicações manuais confirmadas.
                 </p>
                 <div className="space-y-2">
-                  {/* Aqui viria o histórico de employee_notifications filtrado por cliente_id se houvesse a coluna, 
-                        ou via loan_id. Por brevidade, manteremos a estrutura para expansão. */}
                   <p className="text-xs text-center py-4 text-muted-foreground italic">
                     Nenhum aviso registrado recentemente.
                   </p>
@@ -1103,7 +1102,7 @@ export function ClientePainel({
               <div className="space-y-4">
                 <div className="rounded-lg border border-border/40 p-4 space-y-3 bg-surface/30">
                   <h4 className="text-sm font-bold text-gold uppercase tracking-wider mb-2">Dados Cadastrais</h4>
-                  
+
                   <div className="space-y-1.5">
                     <Label htmlFor="edit-name">Nome Completo</Label>
                     <Input
@@ -1134,7 +1133,7 @@ export function ClientePainel({
 
                 <div className="rounded-lg border border-border/40 p-4 space-y-3 bg-surface/30">
                   <h4 className="text-sm font-bold text-gold uppercase tracking-wider mb-2">Configurações Financeiras</h4>
-                  
+
                   <div className="space-y-2">
                     <Label>Tipo de Multa Padrão</Label>
                     <Select
@@ -1217,7 +1216,7 @@ export function ClientePainel({
           <div className="rounded-lg border border-border bg-surface p-4 space-y-4">
             <div>
               <p className="text-xs uppercase tracking-wide text-muted-foreground font-bold">Histórico de Observações</p>
-              
+
               {parsedNotes.length === 0 ? (
                 <p className="text-xs text-muted-foreground mt-2 italic text-center py-2">Nenhuma observação registrada.</p>
               ) : (
@@ -1226,7 +1225,7 @@ export function ClientePainel({
                     <div key={idx} className="relative">
                       {/* Timeline dot */}
                       <div className="absolute -left-[21px] top-1.5 w-2.5 h-2.5 rounded-full bg-gold border border-background" />
-                      
+
                       <div className="space-y-1">
                         {note.timestamp && (
                           <span className="text-[10px] text-gold font-semibold block">
