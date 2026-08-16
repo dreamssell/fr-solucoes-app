@@ -125,7 +125,88 @@ function Recebimentos() {
   };
 
   const mutation = useMutation({
-    mutationFn: registerPaymentFn,
+    mutationFn: async () => {
+      const valCents = Math.round(parseBRLInput(formData.valor) * 100);
+      const multaCents = Math.round(parseBRLInput(formData.multa || "0") * 100);
+      const descontoCents = formData.tipo === "antecipacao" ? Math.round(parseBRLInput(formData.desconto || "0") * 100) : 0;
+
+      if (formData.tipo === "integral" || formData.tipo === "parcial") {
+        return registerPaymentFn({
+          data: {
+            installment_id: formData.parcelaId,
+            amount_cents: valCents,
+            penalty_cents: multaCents,
+            payment_date: formData.data,
+            payment_method: formData.forma,
+            notes: formData.obs || null,
+            idempotency_key: formData.paymentIntentId,
+          },
+        });
+      }
+
+      if (!selectedInstallment || !dbLoans) {
+        throw new Error("Selecione uma parcela para identificar o contrato.");
+      }
+
+      const loan = (dbLoans as unknown as LoanRow[]).find((l) => l.id === selectedInstallment.loan_id);
+      if (!loan) {
+        throw new Error("Contrato não encontrado");
+      }
+
+      const openInsts = (loan.installments ?? [])
+        .filter((p) => p.status !== "pago")
+        .sort((a, b) => a.number - b.number);
+
+      if (openInsts.length === 0) {
+        throw new Error("Nenhuma parcela em aberto encontrada para este contrato");
+      }
+
+      if (formData.tipo === "quitar") {
+        let first = true;
+        for (const inst of openInsts) {
+          await registerPaymentFn({
+            data: {
+              installment_id: inst.id,
+              amount_cents: inst.outstanding_amount,
+              penalty_cents: first ? multaCents : 0,
+              payment_date: formData.data,
+              payment_method: formData.forma,
+              notes: formData.obs ? `${formData.obs} (Quitação)` : "Quitação de empréstimo",
+              idempotency_key: `${formData.paymentIntentId}-quitar-${inst.id}`,
+            },
+          });
+          first = false;
+        }
+        return { success: true };
+      }
+
+      if (formData.tipo === "antecipacao") {
+        let totalCentsToApply = valCents + descontoCents;
+        let first = true;
+        
+        for (const inst of openInsts) {
+          if (totalCentsToApply <= 0) break;
+          
+          const allocatedCents = Math.min(totalCentsToApply, inst.outstanding_amount);
+          if (allocatedCents > 0) {
+            await registerPaymentFn({
+              data: {
+                installment_id: inst.id,
+                amount_cents: allocatedCents,
+                penalty_cents: first ? multaCents : 0,
+                payment_date: formData.data,
+                payment_method: formData.forma,
+                notes: `[Antecipação] Valor Pago: ${formData.valor} | Desconto: ${formData.desconto}. ${formData.obs || ""}`.trim(),
+                idempotency_key: `${formData.paymentIntentId}-antecipa-${inst.id}`,
+              },
+            });
+            totalCentsToApply -= allocatedCents;
+            first = false;
+          }
+        }
+        return { success: true };
+      }
+    },
     onSuccess: () => {
       toast.success("Pagamento registrado com sucesso!");
       queryClient.invalidateQueries({ queryKey: ["payments"] });
@@ -155,9 +236,10 @@ function Recebimentos() {
   const [formData, setFormData] = useState({
     clienteId: "",
     parcelaId: "",
-    tipo: "integral" as "integral" | "parcial",
+    tipo: "integral" as "integral" | "parcial" | "quitar" | "antecipacao",
     valor: "",
     multa: "0",
+    desconto: "0",
     data: new Date().toISOString().split("T")[0],
     forma: "pix" as "pix" | "dinheiro" | "transferencia",
     obs: "",
@@ -171,6 +253,7 @@ function Recebimentos() {
       tipo: "integral",
       valor: "",
       multa: "0",
+      desconto: "0",
       data: new Date().toISOString().split("T")[0],
       forma: "pix",
       obs: "",
@@ -210,15 +293,25 @@ function Recebimentos() {
     return availableInstallments.find((i) => i.id === formData.parcelaId);
   }, [availableInstallments, formData.parcelaId]);
 
-  // Auto-fill value if integral
-  useMemo(() => {
+  // Auto-fill value if integral or quitar
+  useEffect(() => {
     if (formData.tipo === "integral" && selectedInstallment) {
       setFormData((s) => ({
         ...s,
         valor: maskBRL(selectedInstallment.outstanding_amount.toString()),
       }));
+    } else if (formData.tipo === "quitar" && selectedInstallment && dbLoans) {
+      const loan = (dbLoans as unknown as LoanRow[]).find((l) => l.id === selectedInstallment.loan_id);
+      if (loan) {
+        const openInsts = (loan.installments ?? []).filter((p) => p.status !== "pago");
+        const totalOpen = openInsts.reduce((sum, p) => sum + p.outstanding_amount, 0);
+        setFormData((s) => ({
+          ...s,
+          valor: maskBRL(totalOpen.toString()),
+        }));
+      }
     }
-  }, [formData.tipo, selectedInstallment]);
+  }, [formData.tipo, selectedInstallment, dbLoans]);
 
   const totalPeriodo = useMemo(() => {
     return payments.reduce((s, r) => s + r.amount + (r.penalty_amount || 0), 0);
@@ -230,25 +323,32 @@ function Recebimentos() {
       return;
     }
 
+    if ((formData.tipo === "quitar" || formData.tipo === "antecipacao") && userRole === "employee") {
+      toast.error("Quitação e Antecipação são permitidas apenas para Administradores/Gerentes.");
+      return;
+    }
+
     const valCents = Math.round(parseBRLInput(formData.valor) * 100);
-    const multaCents = Math.round(parseBRLInput(formData.multa || "0") * 100);
+    const descontoCents = formData.tipo === "antecipacao" ? Math.round(parseBRLInput(formData.desconto || "0") * 100) : 0;
+
+    if (formData.tipo === "antecipacao" && selectedInstallment && dbLoans) {
+      const loan = (dbLoans as unknown as LoanRow[]).find((l) => l.id === selectedInstallment.loan_id);
+      if (loan) {
+        const openInsts = (loan.installments ?? []).filter((p) => p.status !== "pago");
+        const totalOpen = openInsts.reduce((sum, p) => sum + p.outstanding_amount, 0);
+        if (valCents + descontoCents > totalOpen) {
+          toast.error(`O valor antecipado com desconto excede o saldo devedor total do empréstimo (${formatBRL(totalOpen / 100)})`);
+          return;
+        }
+      }
+    }
 
     if (formData.tipo === "parcial" && userRole === "employee") {
       setShowAuthDialog(true);
       return;
     }
 
-    mutation.mutate({
-      data: {
-        installment_id: formData.parcelaId,
-        amount_cents: valCents,
-        penalty_cents: multaCents,
-        payment_date: formData.data,
-        payment_method: formData.forma,
-        notes: formData.obs || null,
-        idempotency_key: formData.paymentIntentId,
-      },
-    });
+    mutation.mutate();
   };
 
   const handleRequestPartial = () => {
@@ -429,15 +529,23 @@ function Recebimentos() {
               <RadioGroup
                 value={formData.tipo}
                 onValueChange={(v) =>
-                  setFormData((s) => ({ ...s, tipo: v as "integral" | "parcial" }))
+                  setFormData((s) => ({ ...s, tipo: v as "integral" | "parcial" | "quitar" | "antecipacao" }))
                 }
-                className="flex gap-4"
+                className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:gap-4"
               >
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
                   <RadioGroupItem value="integral" /> Integral
                 </label>
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
                   <RadioGroupItem value="parcial" /> Parcial
+                </label>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <RadioGroupItem value="quitar" disabled={userRole === "employee"} /> Quitar Empréstimo
+                  {userRole === "employee" && <span className="text-[9px] text-muted-foreground">(Apenas Adm)</span>}
+                </label>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <RadioGroupItem value="antecipacao" disabled={userRole === "employee"} /> Antecipação
+                  {userRole === "employee" && <span className="text-[9px] text-muted-foreground">(Apenas Adm)</span>}
                 </label>
               </RadioGroup>
             </div>
@@ -450,7 +558,7 @@ function Recebimentos() {
                   onChange={(e) => setFormData((s) => ({ ...s, valor: maskBRL(e.target.value) }))}
                   inputMode="decimal"
                   className="bg-muted/30"
-                  readOnly={formData.tipo === "integral"}
+                  readOnly={formData.tipo === "integral" || formData.tipo === "quitar"}
                 />
               </div>
               <div className="space-y-2">
@@ -462,6 +570,17 @@ function Recebimentos() {
                   className="bg-muted/30"
                 />
               </div>
+              {formData.tipo === "antecipacao" && (
+                <div className="space-y-2 col-span-2">
+                  <Label>Desconto concedido (R$)</Label>
+                  <Input
+                    value={formData.desconto}
+                    onChange={(e) => setFormData((s) => ({ ...s, desconto: maskBRL(e.target.value) }))}
+                    inputMode="decimal"
+                    className="bg-muted/30"
+                  />
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
