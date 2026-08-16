@@ -42,6 +42,27 @@ type LoanRow = Database["public"]["Tables"]["loans"]["Row"] & {
   installments: Database["public"]["Tables"]["installments"]["Row"][];
 };
 
+const getDayOfWeekName = (dateStr: string) => {
+  if (!dateStr) return "";
+  const parts = dateStr.split("-");
+  if (parts.length !== 3) return "";
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1;
+  const day = parseInt(parts[2], 10);
+  const date = new Date(year, month, day);
+  
+  const dayNames = [
+    "Domingo",
+    "Segunda-feira",
+    "Terça-feira",
+    "Quarta-feira",
+    "Quinta-feira",
+    "Sexta-feira",
+    "Sábado"
+  ];
+  return dayNames[date.getDay()];
+};
+
 export const Route = createFileRoute("/_authenticated/emprestimos")({
   head: () => ({
     meta: [
@@ -240,26 +261,34 @@ function Emprestimos() {
             <p className="text-sm">Carregando contratos reais...</p>
           </div>
         ) : (
-          lista.map((e) => (
-            <Collapsible
-              key={e.id}
-              className="overflow-hidden rounded-2xl border border-border bg-card transition-all hover:border-gold/20"
-            >
-              <CollapsibleTrigger className="group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-4 p-5 text-left">
-                <div className="flex items-center gap-4 min-w-0">
-                  <div className="hidden h-10 w-10 shrink-0 place-items-center rounded-xl bg-graphite font-display text-xs font-bold text-gold sm:grid">
-                    FR
+          lista.map((e) => {
+            const sortedInst = e.installments ? [...e.installments].sort((a, b) => a.number - b.number) : [];
+            const firstDueDate = sortedInst[0]?.due_date || e.start_date;
+            const dayOfWeek = firstDueDate ? getDayOfWeekName(firstDueDate) : "";
+            const vencimentoText = e.frequency === "semanal" && dayOfWeek ? ` - Vence toda ${dayOfWeek}` : "";
+            const employeeName = e.employees?.full_name?.split(" ")[0] || "—";
+            const formattedDate = formatDate(e.start_date);
+            const totalParcelas = e.installments_count.toString().padStart(2, "0");
+
+            return (
+              <Collapsible
+                key={e.id}
+                className="overflow-hidden rounded-2xl border border-border bg-card transition-all hover:border-gold/20"
+              >
+                <CollapsibleTrigger className="group grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-4 p-5 text-left">
+                  <div className="flex items-center gap-4 min-w-0">
+                    <div className="hidden h-10 w-10 shrink-0 place-items-center rounded-xl bg-graphite font-display text-xs font-bold text-gold sm:grid">
+                      FR
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-base font-bold text-foreground">
+                        {e.clients?.full_name || "Desconhecido"}
+                      </p>
+                      <p className="truncate text-xs font-medium text-muted-foreground uppercase tracking-tight">
+                        Atendido por {employeeName} - {formattedDate} - {totalParcelas} PARCELAS{vencimentoText}
+                      </p>
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <p className="truncate text-base font-bold text-foreground">
-                      {e.clients?.full_name || "Desconhecido"}
-                    </p>
-                    <p className="truncate text-xs font-medium text-muted-foreground uppercase tracking-tight">
-                      {e.employees?.full_name?.split(" ")[0] || "—"} · {formatDate(e.start_date)} ·{" "}
-                      {e.installments_count} PARCELAS
-                    </p>
-                  </div>
-                </div>
                 <div className="flex shrink-0 items-center gap-4">
                   <div className="text-right">
                     <p className="font-display text-lg font-bold text-gold">
@@ -331,8 +360,9 @@ function Emprestimos() {
                   </div>
                 </div>
               </CollapsibleContent>
-            </Collapsible>
-          ))
+              </Collapsible>
+            );
+          })
         )}
         {!isLoadingLoans && lista.length === 0 && (
           <p className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
