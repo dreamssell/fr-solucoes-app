@@ -78,7 +78,7 @@ BEGIN
       v_loan.id, (v_i->>'number')::int, (v_i->>'due_date')::date,
       (v_i->>'principal_amount')::numeric, (v_i->>'fr_profit_amount')::numeric,
       (v_i->>'employee_profit_amount')::numeric, (v_i->>'total_amount')::numeric,
-      (v_i->>'outstanding_amount')::numeric, 0, 0, 'ativa'
+      (v_i->>'total_amount')::numeric, 0, 0, 'pendente'
     );
   END LOOP;
 
