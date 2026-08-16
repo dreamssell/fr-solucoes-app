@@ -702,6 +702,12 @@ export function ClientePainel({
   const [configDelayInterestRate, setConfigDelayInterestRate] = useState(cliente?.delay_interest_rate?.toString() ?? "0");
   const [isSavingConfig, setIsSavingConfig] = useState(false);
 
+  const [editFullName, setEditFullName] = useState(cliente?.full_name ?? "");
+  const [editPhone, setEditPhone] = useState(cliente?.phone ?? "");
+  const [editCPF, setEditCPF] = useState(cliente?.cpf ?? "");
+  const [newAnnotation, setNewAnnotation] = useState("");
+  const [isSavingAnnotation, setIsSavingAnnotation] = useState(false);
+
   useEffect(() => {
     if (cliente) {
       setConfigPenaltyKind(cliente.penalty_kind);
@@ -709,16 +715,37 @@ export function ClientePainel({
       setConfigPenaltyGraceDays(cliente.penalty_grace_days.toString());
       setConfigDelayInterestKind(cliente.delay_interest_kind);
       setConfigDelayInterestRate(cliente.delay_interest_rate.toString());
+      setEditFullName(cliente.full_name);
+      setEditPhone(cliente.phone);
+      setEditCPF(cliente.cpf || "");
     }
   }, [cliente]);
 
   const handleSaveConfig = async () => {
+    if (!editFullName.trim() || !editPhone.trim()) {
+      toast.error("Nome e Telefone são obrigatórios.");
+      return;
+    }
+
+    if (!validatePhone(editPhone)) {
+      toast.error("Telefone inválido.");
+      return;
+    }
+
+    if (editCPF && !validateCPF(editCPF)) {
+      toast.error("CPF inválido.");
+      return;
+    }
+
     setIsSavingConfig(true);
     try {
       await updateClientFn({
         data: {
           id: cliente.id,
           updates: {
+            full_name: editFullName,
+            phone: editPhone,
+            cpf: editCPF || null,
             penalty_kind: configPenaltyKind,
             penalty_value: parseInt(configPenaltyValue) || 0,
             penalty_grace_days: parseInt(configPenaltyGraceDays) || 0,
@@ -727,11 +754,11 @@ export function ClientePainel({
           },
         },
       });
-      toast.success("Configurações salvas com sucesso!");
+      toast.success("Dados e configurações salvos com sucesso!");
       queryClient.invalidateQueries({ queryKey: ["clients"] });
       onUpdate();
     } catch (err) {
-      toast.error("Erro ao salvar configurações");
+      toast.error("Erro ao salvar alterações.");
     } finally {
       setIsSavingConfig(false);
     }
@@ -799,6 +826,61 @@ export function ClientePainel({
     }
   };
 
+  const parsedNotes = useMemo(() => {
+    if (!cliente.notes) return [];
+    return cliente.notes
+      .split("\n")
+      .filter((line) => line.trim() !== "")
+      .map((line) => {
+        const match = line.match(/^\[(\d{2}\/\d{2}\/\d{4} \d{2}:\d{2})\]\s*(.*)$/);
+        if (match) {
+          return {
+            timestamp: match[1],
+            text: match[2],
+          };
+        }
+        return {
+          timestamp: null,
+          text: line,
+        };
+      });
+  }, [cliente.notes]);
+
+  const handleAddAnnotation = async () => {
+    if (!newAnnotation.trim()) return;
+
+    setIsSavingAnnotation(true);
+    try {
+      const timestamp = new Date().toLocaleString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      const formattedAnnotation = `[${timestamp}] ${newAnnotation.trim()}`;
+      const updatedNotes = cliente.notes
+        ? `${cliente.notes}\n${formattedAnnotation}`
+        : formattedAnnotation;
+
+      await updateClientFn({
+        data: {
+          id: cliente.id,
+          updates: { notes: updatedNotes },
+        },
+      });
+
+      toast.success("Anotação adicionada com sucesso!");
+      setNewAnnotation("");
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
+      onUpdate();
+    } catch (err) {
+      toast.error("Erro ao adicionar anotação");
+    } finally {
+      setIsSavingAnnotation(false);
+    }
+  };
+
   const openDocument = async (path: string) => {
     try {
       const signedUrl = await getSignedUrlFn({ data: path });
@@ -849,7 +931,7 @@ export function ClientePainel({
                 Avisos
               </TabsTrigger>
               <TabsTrigger value="multas" className="flex-1 text-gold">
-                Config.
+                Editar / Config.
               </TabsTrigger>
             </TabsList>
 
@@ -1019,67 +1101,102 @@ export function ClientePainel({
 
             <TabsContent value="multas" className="pt-4 space-y-6">
               <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Tipo de Multa Padrão</Label>
-                  <Select
-                    value={configPenaltyKind}
-                    onValueChange={(v) => setConfigPenaltyKind(v as PenaltyKind)}
-                  >
-                    <SelectTrigger className="bg-surface">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="nenhuma">Sem Multa</SelectItem>
-                      <SelectItem value="valor_fixo">Fixa (R$)</SelectItem>
-                      <SelectItem value="percentual_fixo">Percentual Fixo (%)</SelectItem>
-                      <SelectItem value="percentual_dia">Percentual por Dia (%)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Valor da Multa</Label>
+                <div className="rounded-lg border border-border/40 p-4 space-y-3 bg-surface/30">
+                  <h4 className="text-sm font-bold text-gold uppercase tracking-wider mb-2">Dados Cadastrais</h4>
+                  
+                  <div className="space-y-1.5">
+                    <Label htmlFor="edit-name">Nome Completo</Label>
                     <Input
-                      type="number"
-                      value={configPenaltyValue}
-                      onChange={(e) => setConfigPenaltyValue(e.target.value)}
+                      id="edit-name"
+                      value={editFullName}
+                      onChange={(e) => setEditFullName(e.target.value)}
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label>Carência (Dias)</Label>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="edit-phone">Telefone</Label>
                     <Input
-                      type="number"
-                      value={configPenaltyGraceDays}
-                      onChange={(e) => setConfigPenaltyGraceDays(e.target.value)}
+                      id="edit-phone"
+                      value={editPhone}
+                      onChange={(e) => setEditPhone(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="edit-cpf">CPF</Label>
+                    <Input
+                      id="edit-cpf"
+                      value={editCPF}
+                      onChange={(e) => setEditCPF(e.target.value)}
                     />
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label>Tipo de Juros de Atraso</Label>
-                  <Select
-                    value={configDelayInterestKind}
-                    onValueChange={setConfigDelayInterestKind}
-                  >
-                    <SelectTrigger className="bg-surface">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="diario">Diário (%)</SelectItem>
-                      <SelectItem value="unico">Taxa Única (%)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                <div className="rounded-lg border border-border/40 p-4 space-y-3 bg-surface/30">
+                  <h4 className="text-sm font-bold text-gold uppercase tracking-wider mb-2">Configurações Financeiras</h4>
+                  
+                  <div className="space-y-2">
+                    <Label>Tipo de Multa Padrão</Label>
+                    <Select
+                      value={configPenaltyKind}
+                      onValueChange={(v) => setConfigPenaltyKind(v as PenaltyKind)}
+                    >
+                      <SelectTrigger className="bg-surface">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="nenhuma">Sem Multa</SelectItem>
+                        <SelectItem value="valor_fixo">Fixa (R$)</SelectItem>
+                        <SelectItem value="percentual_fixo">Percentual Fixo (%)</SelectItem>
+                        <SelectItem value="percentual_dia">Percentual por Dia (%)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                <div className="space-y-2">
-                  <Label>Taxa de Juros (%)</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={configDelayInterestRate}
-                    onChange={(e) => setConfigDelayInterestRate(e.target.value)}
-                  />
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Valor da Multa</Label>
+                      <Input
+                        type="number"
+                        value={configPenaltyValue}
+                        onChange={(e) => setConfigPenaltyValue(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Carência (Dias)</Label>
+                      <Input
+                        type="number"
+                        value={configPenaltyGraceDays}
+                        onChange={(e) => setConfigPenaltyGraceDays(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Tipo de Juros de Atraso</Label>
+                    <Select
+                      value={configDelayInterestKind}
+                      onValueChange={setConfigDelayInterestKind}
+                    >
+                      <SelectTrigger className="bg-surface">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="diario">Diário (%)</SelectItem>
+                        <SelectItem value="unico">Taxa Única (%)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Taxa de Juros (%)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={configDelayInterestRate}
+                      onChange={(e) => setConfigDelayInterestRate(e.target.value)}
+                    />
+                  </div>
                 </div>
 
                 <Button
@@ -1090,16 +1207,66 @@ export function ClientePainel({
                   {isSavingConfig ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
-                    "Salvar Configurações"
+                    "Salvar Dados e Configurações"
                   )}
                 </Button>
               </div>
             </TabsContent>
           </Tabs>
 
-          <div className="rounded-lg border border-border bg-surface p-4">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Observações</p>
-            <p className="mt-1 text-sm">{cliente.notes || "Nenhuma observação."}</p>
+          <div className="rounded-lg border border-border bg-surface p-4 space-y-4">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground font-bold">Histórico de Observações</p>
+              
+              {parsedNotes.length === 0 ? (
+                <p className="text-xs text-muted-foreground mt-2 italic text-center py-2">Nenhuma observação registrada.</p>
+              ) : (
+                <div className="mt-3 relative pl-4 border-l border-border space-y-4">
+                  {parsedNotes.map((note, idx) => (
+                    <div key={idx} className="relative">
+                      {/* Timeline dot */}
+                      <div className="absolute -left-[21px] top-1.5 w-2.5 h-2.5 rounded-full bg-gold border border-background" />
+                      
+                      <div className="space-y-1">
+                        {note.timestamp && (
+                          <span className="text-[10px] text-gold font-semibold block">
+                            {note.timestamp}
+                          </span>
+                        )}
+                        <p className="text-xs text-foreground leading-relaxed break-words">
+                          {note.text}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Add new annotation area */}
+            <div className="pt-2 border-t border-border/40 space-y-2">
+              <Label htmlFor="new-annotation" className="text-xs text-muted-foreground">Nova Anotação</Label>
+              <textarea
+                id="new-annotation"
+                placeholder="Digite aqui informações importantes sobre este cliente (promessa de pagamento, etc)..."
+                className="w-full text-xs p-2 rounded-md border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-gold min-h-[60px] resize-none"
+                value={newAnnotation}
+                onChange={(e) => setNewAnnotation(e.target.value)}
+              />
+              <Button
+                size="sm"
+                className="w-full bg-gold/10 text-gold hover:bg-gold/25 font-semibold text-xs py-1"
+                onClick={handleAddAnnotation}
+                disabled={isSavingAnnotation || !newAnnotation.trim()}
+              >
+                {isSavingAnnotation ? (
+                  <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                ) : (
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                )}
+                Adicionar Anotação ao Histórico
+              </Button>
+            </div>
           </div>
         </div>
       </SheetContent>
