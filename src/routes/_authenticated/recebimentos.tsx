@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Plus, Upload, Loader2, AlertCircle, CheckCircle2, Download } from "lucide-react";
 import { AppShell, PageHeader } from "@/components/fr/AppShell";
 import { Button } from "@/components/ui/button";
@@ -183,10 +183,10 @@ function Recebimentos() {
       if (formData.tipo === "antecipacao") {
         let totalCentsToApply = valCents + descontoCents;
         let first = true;
-        
+
         for (const inst of openInsts) {
           if (totalCentsToApply <= 0) break;
-          
+
           const allocatedCents = Math.min(totalCentsToApply, inst.outstanding_amount);
           if (allocatedCents > 0) {
             await registerPaymentFn({
