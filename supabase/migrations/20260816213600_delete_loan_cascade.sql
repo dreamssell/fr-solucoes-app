@@ -70,3 +70,6 @@ BEGIN
           ), v_uid);
 END;
 $$;
+
+-- Conceder permissão de execução para os papéis authenticated e service_role
+GRANT EXECUTE ON FUNCTION public.delete_loan_cascade(uuid) TO authenticated, service_role;

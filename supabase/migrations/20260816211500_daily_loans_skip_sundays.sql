@@ -18,6 +18,9 @@ BEGIN
 END;
 $$;
 
+-- Conceder permissão de execução
+GRANT EXECUTE ON FUNCTION public.calculate_daily_due_date(date, integer) TO authenticated, service_role;
+
 -- 1. Update all existing daily installments in public.installments
 UPDATE public.installments i
 SET due_date = public.calculate_daily_due_date(l.start_date, i.number)
