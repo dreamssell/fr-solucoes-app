@@ -52,8 +52,10 @@ describe("Cálculo de Datas de Vencimento", () => {
     expect(ymd(calculateDueDate(start("2024-02-29"), 12, "mensal"))).toBe("2025-02-28");
   });
 
-  it("frequências diária, semanal e quinzenal preservam o dia UTC", () => {
-    expect(ymd(calculateDueDate(start("2024-01-31"), 1, "diario"))).toBe("2024-02-01");
+  it("frequências diária, semanal e quinzenal preservam o dia UTC e diária pula domingos", () => {
+    expect(ymd(calculateDueDate(start("2024-01-31"), 1, "diario"))).toBe("2024-02-01"); // Quarta -> Quinta
+    expect(ymd(calculateDueDate(start("2024-02-03"), 1, "diario"))).toBe("2024-02-05"); // Sábado -> Segunda (pula Domingo 2024-02-04)
+    expect(ymd(calculateDueDate(start("2024-02-03"), 2, "diario"))).toBe("2024-02-06"); // Sábado -> Terça (pula Domingo 2024-02-04)
     expect(ymd(calculateDueDate(start("2024-01-31"), 2, "semanal"))).toBe("2024-02-14");
     expect(ymd(calculateDueDate(start("2024-01-31"), 1, "quinzenal"))).toBe("2024-02-15");
   });

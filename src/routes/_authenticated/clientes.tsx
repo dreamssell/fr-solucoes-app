@@ -686,8 +686,9 @@ export function ClientePainel({
   const createClientDocumentFn = useServerFn(createClientDocument);
   const deleteClientDocumentFn = useServerFn(deleteClientDocument);
   const getClientDocumentsFn = useServerFn(getClientDocuments);
-  const { data: loans } = useLoans();
+  const { data: loans, deleteLoan } = useLoans();
   const queryClient = useQueryClient();
+  const [deletingLoanId, setDeletingLoanId] = useState<string | null>(null);
 
   const { data: documents, refetch: refetchDocuments } = useQuery({
     queryKey: ["client-documents", cliente?.id],
@@ -847,6 +848,24 @@ export function ClientePainel({
     }
   };
 
+  const handleDeleteLoan = async (loanId: string) => {
+    if (
+      !confirm(
+        "Tem certeza de que deseja excluir este empréstimo? Todos os registros relacionados (parcelas, pagamentos, etc) serão apagados permanentemente do banco de dados."
+      )
+    )
+      return;
+    setDeletingLoanId(loanId);
+    try {
+      await deleteLoan(loanId);
+      onUpdate();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDeletingLoanId(null);
+    }
+  };
+
   const handleAddAnnotation = async () => {
     if (!newAnnotation.trim()) return;
 
@@ -956,7 +975,22 @@ export function ClientePainel({
                         Início: {l.start_date ? new Date(l.start_date).toLocaleDateString() : "—"}
                       </p>
                     </div>
-                    <span className="font-bold text-gold">{formatBRL(l.total_amount / 100)}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-gold">{formatBRL(l.total_amount / 100)}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => handleDeleteLoan(l.id)}
+                        disabled={deletingLoanId !== null}
+                      >
+                        {deletingLoanId === l.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
                   </div>
                 ))
               )}

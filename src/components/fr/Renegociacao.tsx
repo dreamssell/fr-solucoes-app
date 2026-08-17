@@ -249,7 +249,7 @@ export function RenegociarButton({ loan }: { loan: LoanLike }) {
               {isRequesting ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                "Enviar para aprovação"
+                "Renegociar"
               )}
             </Button>
           </DialogFooter>

@@ -1,7 +1,7 @@
 import { rpcErrorMessage } from "@/lib/rpc";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { getLoans, requestLoanApproval, decideLoanApproval } from "@/lib/loans.functions";
+import { getLoans, requestLoanApproval, decideLoanApproval, deleteLoan } from "@/lib/loans.functions";
 import { toast } from "sonner";
 
 export type LoanRequestPayload = {
@@ -28,6 +28,7 @@ export function useLoans() {
   const fetchLoans = useServerFn(getLoans);
   const requestLoan = useServerFn(requestLoanApproval);
   const decideLoan = useServerFn(decideLoanApproval);
+  const removeLoan = useServerFn(deleteLoan);
 
   const query = useQuery({
     queryKey: ["loans"],
@@ -59,6 +60,17 @@ export function useLoans() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (loanId: string) => removeLoan({ data: { loan_id: loanId } }),
+    onSuccess: () => {
+      invalidate();
+      toast.success("Empréstimo excluído com sucesso.");
+    },
+    onError: (error: unknown) => {
+      toast.error(rpcErrorMessage(error as { message?: string }, "Erro ao excluir empréstimo"));
+    },
+  });
+
   return {
     ...query,
     requestLoanApproval: requestMutation.mutateAsync,
@@ -68,5 +80,7 @@ export function useLoans() {
     isPending: requestMutation.isPending,
     decideLoanApproval: decideMutation.mutateAsync,
     isDeciding: decideMutation.isPending,
+    deleteLoan: deleteMutation.mutateAsync,
+    isDeleting: deleteMutation.isPending,
   };
 }

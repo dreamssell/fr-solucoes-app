@@ -134,3 +134,19 @@ export const getLoans = createServerFn({ method: "GET" })
       employees: loan.clients?.employees ?? null,
     }));
   });
+
+export const deleteLoan = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .validator((data: unknown) =>
+    z
+      .object({
+        loan_id: z.string().uuid(),
+      })
+      .parse(data),
+  )
+  .handler(async ({ data, context }) => {
+    await callRpc(context.supabase, "delete_loan_cascade", {
+      p_loan_id: data.loan_id,
+    });
+    return { success: true };
+  });

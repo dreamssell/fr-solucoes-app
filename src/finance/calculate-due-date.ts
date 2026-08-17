@@ -16,7 +16,16 @@ export function calculateDueDate(
 ): Date {
   const base = startDate.getTime();
 
-  if (frequency === "diario") return new Date(base + installmentNumber * DAY_MS);
+  if (frequency === "diario") {
+    const currentDate = new Date(startDate.getTime());
+    for (let i = 0; i < installmentNumber; i++) {
+      currentDate.setUTCDate(currentDate.getUTCDate() + 1);
+      if (currentDate.getUTCDay() === 0) {
+        currentDate.setUTCDate(currentDate.getUTCDate() + 1);
+      }
+    }
+    return currentDate;
+  }
   if (frequency === "semanal") return new Date(base + installmentNumber * 7 * DAY_MS);
   if (frequency === "quinzenal") return new Date(base + installmentNumber * 15 * DAY_MS);
 
