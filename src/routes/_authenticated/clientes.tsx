@@ -38,6 +38,8 @@ import { useLoans } from "@/hooks/use-loans";
 import { useServerFn } from "@tanstack/react-start";
 import { requestLoanApproval } from "@/lib/loans.functions";
 import { Checkbox } from "@/components/ui/checkbox";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 import { validateCPF, validatePhone } from "@/finance/validators";
 import { Database } from "@/integrations/supabase/types";
@@ -74,6 +76,9 @@ function Clientes() {
   const { q: searchParam } = Route.useSearch();
   const [busca, setBusca] = useState(searchParam || "");
   const [funcFilter, setFuncFilter] = useState("todos");
+  const [freqFilter, setFreqFilter] = useState("todos");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const [sel, setSel] = useState<ClientRow | null>(null);
   const { data: dbEmployees } = useEmployees();
   const {
@@ -82,7 +87,12 @@ function Clientes() {
     isPending: isCreating,
     isLoading: isLoadingClients,
   } = useClients();
+  const { data: dbLoans } = useLoans();
   const requestLoanApprovalFn = useServerFn(requestLoanApproval);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [busca, funcFilter, freqFilter]);
 
   const activeEmployees = useMemo(() => {
     if (!dbEmployees) return [];
@@ -91,14 +101,27 @@ function Clientes() {
 
   const lista = useMemo(() => {
     if (!dbClients) return [];
-    return (dbClients as ClientRow[]).filter(
-      (c) =>
-        (funcFilter === "todos" || c.employee_id === funcFilter) &&
-        (busca.trim() === "" ||
-          c.full_name.toLowerCase().includes(busca.toLowerCase()) ||
-          c.phone.includes(busca)),
-    );
-  }, [dbClients, busca, funcFilter]);
+    return (dbClients as ClientRow[]).filter((c) => {
+      const matchesEmployee = funcFilter === "todos" || c.employee_id === funcFilter;
+      const matchesSearch =
+        busca.trim() === "" ||
+        c.full_name.toLowerCase().includes(busca.toLowerCase()) ||
+        c.phone.includes(busca);
+
+      let matchesPeriodicity = true;
+      if (freqFilter !== "todos") {
+        const clientLoans = (dbLoans as unknown as LoanRow[])?.filter((l) => l.client_id === c.id) || [];
+        matchesPeriodicity = clientLoans.some((l) => l.frequency === freqFilter);
+      }
+
+      return matchesEmployee && matchesSearch && matchesPeriodicity;
+    });
+  }, [dbClients, busca, funcFilter, freqFilter, dbLoans]);
+
+  const listaPaginada = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return lista.slice(startIndex, startIndex + pageSize);
+  }, [lista, currentPage, pageSize]);
 
   const [isNewClientOpen, setIsNewClientOpen] = useState(false);
   const [newDocs, setNewDocs] = useState<Array<{ id: string; name: string; file: File | null }>>([]);
@@ -285,22 +308,165 @@ function Clientes() {
     }
   };
 
+  const handleExportPDF = () => {
+    try {
+      const doc = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
+
+      // 1. Header background styling (Elegant Dark Gold/Black header banner)
+      doc.setFillColor(18, 18, 18); // Graphite #121212
+      doc.rect(0, 0, 210, 38, "F");
+
+      // Draw stylized gold stripes/logo in header
+      doc.setFillColor(212, 175, 55); // Gold #D4AF37
+      doc.rect(15, 10, 12, 12, "F");
+      
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8);
+      doc.text("FR", 19, 18);
+
+      // FR Financeiro Title
+      doc.setFontSize(16);
+      doc.text("FR FINANCEIRO", 32, 18);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(180, 180, 180);
+      doc.text("Sistema de Gestão de Contratos de Crédito", 32, 23);
+
+      // Report Info
+      doc.setTextColor(255, 255, 255);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.text("RELATÓRIO DE CLIENTES", 135, 18);
+      
+      const todayStr = new Date().toLocaleString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(180, 180, 180);
+      doc.text(`Emissão: ${todayStr}`, 135, 23);
+
+      // Horizontal separator line under header
+      doc.setDrawColor(212, 175, 55);
+      doc.setLineWidth(1.5);
+      doc.line(0, 38, 210, 38);
+
+      // 2. Filter info text
+      let filterText = "Filtros aplicados: ";
+      if (busca) filterText += `Busca: "${busca}" | `;
+      filterText += `Responsável: ${
+        funcFilter === "todos"
+          ? "Todos"
+          : dbEmployees?.find((e) => e.id === funcFilter)?.full_name || "Todos"
+      } | `;
+      filterText += `Periodicidade: ${
+        freqFilter === "todos"
+          ? "Todas"
+          : freqFilter.charAt(0).toUpperCase() + freqFilter.slice(1)
+      }`;
+
+      doc.setTextColor(120, 120, 120);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.5);
+      doc.text(filterText, 15, 46);
+
+      // 3. Generate data rows for PDF AutoTable
+      const tableHeaders = [
+        ["Cliente", "CPF", "Contato", "Responsável", "Periodicidade", "Status"],
+      ];
+
+      const tableData = lista.map((c) => {
+        const clientLoans = (dbLoans as unknown as LoanRow[])?.filter((l) => l.client_id === c.id) || [];
+        const frequencies = Array.from(new Set(clientLoans.map((l) => l.frequency).filter((f): f is string => !!f)));
+        const freqText = frequencies.length > 0
+          ? frequencies.map((f) => f.toUpperCase()).join(", ")
+          : "—";
+
+        return [
+          c.full_name,
+          c.cpf || "Sem CPF",
+          c.phone,
+          c.employees?.full_name || "—",
+          freqText,
+          c.status === "ativo" ? "EM DIA" : "ATRASADO",
+        ];
+      });
+
+      // 4. Render autoTable
+      autoTable(doc, {
+        head: tableHeaders,
+        body: tableData,
+        startY: 50,
+        margin: { left: 15, right: 15 },
+        theme: "striped",
+        headStyles: {
+          fillColor: [18, 18, 18],
+          textColor: [255, 255, 255],
+          fontSize: 8,
+          fontStyle: "bold",
+          halign: "left",
+        },
+        bodyStyles: {
+          fontSize: 8,
+          textColor: [50, 50, 50],
+        },
+        didDrawPage: (data) => {
+          // Footer
+          const pageCount = doc.getNumberOfPages();
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(7.5);
+          doc.setTextColor(150, 150, 150);
+          doc.text(
+            `FR Financeiro - Página ${data.pageNumber} de ${pageCount}`,
+            15,
+            doc.internal.pageSize.height - 10
+          );
+        },
+      });
+
+      // Save PDF
+      doc.save(`FR_Financeiro_Relatorio_Clientes_${new Date().toISOString().slice(0, 10)}.pdf`);
+      toast.success("PDF exportado com sucesso!");
+    } catch (err) {
+      console.error(err);
+      toast.error("Erro ao gerar arquivo PDF");
+    }
+  };
+
   return (
     <AppShell>
       <PageHeader
         title="Clientes"
         description={`${lista.length} clientes na carteira`}
         actions={
-          <Button
-            onClick={() => setIsNewClientOpen(true)}
-            className="bg-gold text-black hover:bg-gold/90"
-          >
-            <Plus className="mr-2 h-4 w-4" /> Novo Cliente
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={handleExportPDF}
+              className="border-gold text-gold hover:bg-gold/10 font-bold"
+            >
+              Exportar PDF
+            </Button>
+            <Button
+              onClick={() => setIsNewClientOpen(true)}
+              className="bg-gold text-black hover:bg-gold/90"
+            >
+              <Plus className="mr-2 h-4 w-4" /> Novo Cliente
+            </Button>
+          </div>
         }
       />
 
-      <div className="grid gap-3 rounded-xl border border-border bg-card p-4 sm:grid-cols-[minmax(0,1fr)_240px]">
+      <div className="grid gap-3 rounded-xl border border-border bg-card p-4 sm:grid-cols-[minmax(0,1fr)_200px_200px]">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -312,7 +478,7 @@ function Clientes() {
         </div>
         <Select value={funcFilter} onValueChange={setFuncFilter}>
           <SelectTrigger>
-            <SelectValue />
+            <SelectValue placeholder="Funcionário" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos os funcionários</SelectItem>
@@ -321,6 +487,19 @@ function Clientes() {
                 {f.nome}
               </SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={freqFilter} onValueChange={setFreqFilter}>
+          <SelectTrigger>
+            <SelectValue placeholder="Periodicidade" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todos">Todas as frequências</SelectItem>
+            <SelectItem value="diario">Diário</SelectItem>
+            <SelectItem value="semanal">Semanal</SelectItem>
+            <SelectItem value="quinzenal">Quinzenal</SelectItem>
+            <SelectItem value="mensal">Mensal</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -350,7 +529,7 @@ function Clientes() {
                   </td>
                 </tr>
               ) : (
-                lista.map((c) => (
+                listaPaginada.map((c) => (
                   <tr key={c.id} className="group transition-colors hover:bg-gold/[0.02]">
                     <td className="px-6 py-4">
                       <p className="font-bold text-foreground">{c.full_name}</p>
@@ -391,6 +570,82 @@ function Clientes() {
           </div>
         )}
       </div>
+
+      {/* Pagination controls */}
+      {!isLoadingClients && lista.length > 0 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground mt-4">
+          <div className="flex items-center gap-2">
+            <span>Mostrar</span>
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              className="rounded-md border border-border bg-background px-2 py-1 text-foreground focus:outline-none focus:ring-1 focus:ring-gold text-xs"
+            >
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={150}>150</option>
+            </select>
+            <span>por página</span>
+          </div>
+
+          <div className="text-xs text-center sm:text-left">
+            Exibindo <span className="font-bold text-foreground">{Math.min((currentPage - 1) * pageSize + 1, lista.length)}</span> a{" "}
+            <span className="font-bold text-foreground">{Math.min(currentPage * pageSize, lista.length)}</span> de{" "}
+            <span className="font-bold text-foreground">{lista.length}</span> clientes
+          </div>
+
+          <div className="flex items-center gap-1.5 text-xs">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs font-semibold"
+              onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+              disabled={currentPage === 1}
+            >
+              Anterior
+            </Button>
+            
+            {/* Page numbers list */}
+            {(() => {
+              const totalPages = Math.ceil(lista.length / pageSize);
+              const pages = [];
+              let startPage = Math.max(1, currentPage - 2);
+              let endPage = Math.min(totalPages, startPage + 4);
+              if (endPage - startPage < 4) {
+                startPage = Math.max(1, endPage - 4);
+              }
+
+              for (let i = startPage; i <= endPage; i++) {
+                pages.push(
+                  <Button
+                    key={i}
+                    variant={currentPage === i ? "default" : "outline"}
+                    size="sm"
+                    className={`h-8 w-8 text-xs ${currentPage === i ? "bg-gold text-black hover:bg-gold/90 font-bold" : ""}`}
+                    onClick={() => setCurrentPage(i)}
+                  >
+                    {i}
+                  </Button>
+                );
+              }
+              return pages;
+            })()}
+
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs font-semibold"
+              onClick={() => setCurrentPage((p) => Math.min(p + 1, Math.ceil(lista.length / pageSize)))}
+              disabled={currentPage === Math.ceil(lista.length / pageSize)}
+            >
+              Próximo
+            </Button>
+          </div>
+        </div>
+      )}
 
       <Dialog open={isNewClientOpen} onOpenChange={setIsNewClientOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
@@ -692,7 +947,7 @@ export function ClientePainel({
 
   const { data: documents, refetch: refetchDocuments } = useQuery({
     queryKey: ["client-documents", cliente?.id],
-    queryFn: () => getClientDocumentsFn({ data: cliente?.id }),
+    queryFn: () => getClientDocumentsFn({ data: cliente?.id as string }),
     enabled: !!cliente?.id,
   });
 
@@ -1033,7 +1288,7 @@ export function ClientePainel({
                 <Label>Documentação do Cliente</Label>
 
                 <div className="grid grid-cols-1 gap-2">
-                  {documents?.map((doc) => (
+                  {(documents as any)?.map((doc: any) => (
                     <div
                       key={doc.id}
                       className="flex items-center justify-between rounded-md border border-border bg-surface p-2.5"

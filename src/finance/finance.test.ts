@@ -177,5 +177,65 @@ describe("FR Financeiro - Motor Financeiro (Etapa 4)", () => {
       expect(loan.lucroFrCents).toBe(600000);
       expect(loan.totalCents).toBe(1600000);
     });
+
+    it("mensal com 1 parcela deve ter 30% de taxa mesmo em meses com 31 dias", () => {
+      const loan = buildLoan({
+        capitalCents: 100000,
+        frequencia: "mensal",
+        lucroFuncionario: { tipo: "fixo", valor: 0 },
+        qtdParcelas: 1,
+        startDate: new Date("2026-08-16T00:00:00Z"), // Agosto tem 31 dias
+        applyInterestComposition: true,
+      });
+      expect(loan.taxaFr).toBe(0.3);
+    });
+
+    it("mensal com 2 parcelas deve ter 60% de taxa (1 parcela adicional)", () => {
+      const loan = buildLoan({
+        capitalCents: 100000,
+        frequencia: "mensal",
+        lucroFuncionario: { tipo: "fixo", valor: 0 },
+        qtdParcelas: 2,
+        startDate: new Date("2026-08-16T00:00:00Z"), // Spans Agosto (31) e Setembro (30)
+        applyInterestComposition: true,
+      });
+      expect(loan.taxaFr).toBe(0.6);
+    });
+
+    it("diario com 26 parcelas deve ter 12% de taxa independente do dia da semana de inicio", () => {
+      // Começando na Segunda (spans 4 domingos = 30 dias)
+      const loanMon = buildLoan({
+        capitalCents: 100000,
+        frequencia: "diario",
+        lucroFuncionario: { tipo: "fixo", valor: 0 },
+        qtdParcelas: 26,
+        startDate: new Date("2026-08-17T00:00:00Z"), // Segunda-feira
+        applyInterestComposition: true,
+      });
+      expect(loanMon.taxaFr).toBe(0.12);
+
+      // Começando na Terça (spans 5 domingos = 31 dias corridos no calendario)
+      const loanTue = buildLoan({
+        capitalCents: 100000,
+        frequencia: "diario",
+        lucroFuncionario: { tipo: "fixo", valor: 0 },
+        qtdParcelas: 26,
+        startDate: new Date("2026-08-18T00:00:00Z"), // Terça-feira
+        applyInterestComposition: true,
+      });
+      expect(loanTue.taxaFr).toBe(0.12); // Deve ser 12%, nao 42%
+    });
+
+    it("diario com 27 parcelas deve ter 42% de taxa", () => {
+      const loan = buildLoan({
+        capitalCents: 100000,
+        frequencia: "diario",
+        lucroFuncionario: { tipo: "fixo", valor: 0 },
+        qtdParcelas: 27,
+        startDate: new Date("2026-08-17T00:00:00Z"),
+        applyInterestComposition: true,
+      });
+      expect(loan.taxaFr).toBe(0.42);
+    });
   });
 });
