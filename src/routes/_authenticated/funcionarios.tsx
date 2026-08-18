@@ -747,31 +747,50 @@ function PainelFuncionario({
               </div>
 
               <div className="rounded-lg border border-border">
-                <div className="grid grid-cols-[1fr_100px_90px] gap-3 px-3 py-2 text-xs font-bold uppercase tracking-wider text-muted-foreground bg-graphite/30 border-b border-border">
+                <div className="grid grid-cols-[1fr_95px_85px_80px] gap-2 px-2 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground bg-graphite/30 border-b border-border">
                   <span>Cliente / Parcela</span>
                   <span>Periodicidade</span>
+                  <span>Status</span>
                   <span className="text-right">Valor</span>
                 </div>
                 <ul className="divide-y divide-border">
-                  {paginatedCobrancas.map((c) => (
-                    <li
-                      key={c.id}
-                      className="grid grid-cols-[1fr_100px_90px] gap-3 px-3 py-2.5 text-sm items-center"
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate font-semibold">{c.client?.full_name ?? "Cliente"}</span>
-                        <span className="block text-[10px] text-muted-foreground uppercase tracking-tight">
-                          parc. {c.number.toString().padStart(2, "0")} · {formatDate(c.due_date)}
+                  {paginatedCobrancas.map((c) => {
+                    const isToday = toDay(c.due_date) === hoje;
+                    const isOverdue = toDay(c.due_date) < hoje;
+
+                    return (
+                      <li
+                        key={c.id}
+                        className="grid grid-cols-[1fr_95px_85px_80px] gap-2 px-2 py-2.5 text-xs items-center"
+                      >
+                        <span className="min-w-0">
+                          <span className="block truncate font-semibold text-foreground">{c.client?.full_name ?? "Cliente"}</span>
+                          <span className="block text-[9px] text-muted-foreground uppercase tracking-tight">
+                            parc. {c.number.toString().padStart(2, "0")} · {formatDate(c.due_date)}
+                          </span>
                         </span>
-                      </span>
-                      <span className="text-xs text-muted-foreground capitalize">
-                        {c.loan?.frequency || "—"}
-                      </span>
-                      <span className="shrink-0 font-display font-semibold text-right">
-                        {formatBRL(c.outstanding_amount / 100)}
-                      </span>
-                    </li>
-                  ))}
+                        <span className="text-xs text-muted-foreground capitalize">
+                          {c.loan?.frequency || "—"}
+                        </span>
+                        <span>
+                          {isToday ? (
+                            <span className="inline-flex items-center rounded-md bg-gold/10 px-1.5 py-0.5 text-[9px] font-bold text-gold uppercase tracking-wider">
+                              Vence hoje
+                            </span>
+                          ) : isOverdue ? (
+                            <span className="inline-flex items-center rounded-md bg-danger/10 px-1.5 py-0.5 text-[9px] font-bold text-danger uppercase tracking-wider">
+                              Pendente
+                            </span>
+                          ) : (
+                            "—"
+                          )}
+                        </span>
+                        <span className="shrink-0 font-display font-semibold text-right">
+                          {formatBRL(c.outstanding_amount / 100)}
+                        </span>
+                      </li>
+                    );
+                  })}
                   {filteredCobrancas.length === 0 && (
                     <li className="px-3 py-6 text-center text-sm text-muted-foreground">
                       Nenhuma cobrança pendente.
