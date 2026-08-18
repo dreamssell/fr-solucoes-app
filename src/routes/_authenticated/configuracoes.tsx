@@ -51,10 +51,10 @@ function Configuracoes() {
         return;
       }
       setUser(currentUser);
-      setNome(currentUser.user_metadata?.full_name || "");
+      setNome(currentUser.user_metadata?.["full_name"] || "");
       setEmail(currentUser.email || "");
 
-      const pathOrUrl = currentUser.user_metadata?.avatar_url;
+      const pathOrUrl = currentUser.user_metadata?.["avatar_url"];
       if (pathOrUrl) {
         if (pathOrUrl.startsWith("http")) {
           setAvatarUrl(pathOrUrl);

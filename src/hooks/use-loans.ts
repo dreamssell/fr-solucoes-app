@@ -15,6 +15,7 @@ export type LoanRequestPayload = {
   notes?: string | null;
   reason?: string;
   idempotency_key: string;
+  apply_interest_composition?: boolean;
 };
 
 export type LoanDecisionPayload = {

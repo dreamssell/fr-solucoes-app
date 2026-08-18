@@ -174,7 +174,7 @@ export const getClientDocuments = createServerFn({ method: "GET" })
   .validator((clientId: string) => z.string().uuid().parse(clientId))
   .handler(async ({ data: clientId, context }) => {
     const { supabase } = context;
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("client_documents")
       .select("*")
       .eq("client_id", clientId)
@@ -196,7 +196,7 @@ export const createClientDocument = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { supabase } = context;
-    const { data: doc, error } = await supabase
+    const { data: doc, error } = await (supabase as any)
       .from("client_documents")
       .insert({
         client_id: data.client_id,
@@ -216,7 +216,7 @@ export const deleteClientDocument = createServerFn({ method: "POST" })
     const { supabase } = context;
 
     // Get document file path first to delete from storage
-    const { data: doc } = await supabase
+    const { data: doc } = await (supabase as any)
       .from("client_documents")
       .select("file_path")
       .eq("id", id)
@@ -226,7 +226,7 @@ export const deleteClientDocument = createServerFn({ method: "POST" })
       await supabase.storage.from("documents").remove([doc.file_path]);
     }
 
-    const { error } = await supabase.from("client_documents").delete().eq("id", id);
+    const { error } = await (supabase as any).from("client_documents").delete().eq("id", id);
     if (error) throw error;
     return { success: true };
   });

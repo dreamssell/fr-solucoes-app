@@ -103,7 +103,7 @@ function Recebimentos() {
       formatDate(p.paid_at),
       (p.amount / 100).toFixed(2),
       ((p.penalty_amount || 0) / 100).toFixed(2),
-      p.payment_method,
+      p.method || "—",
       p.status,
       p.employees?.full_name ?? "—"
     ]);
@@ -285,7 +285,11 @@ function Recebimentos() {
 
   const availableInstallments = useMemo(() => {
     return selectedClientLoans
-      .flatMap((l) => (l.installments ?? []).filter((p) => p.status !== "pago"))
+      .flatMap((l) =>
+        (l.installments ?? [])
+          .map((p) => ({ ...p, loan_id: l.id }))
+          .filter((p) => p.status !== "pago"),
+      )
       .sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
   }, [selectedClientLoans]);
 

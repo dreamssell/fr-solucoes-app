@@ -151,7 +151,7 @@ export const updateEmployee = createServerFn({ method: "POST" })
       
     const { data: employee, error } = await supabase
       .from("employees")
-      .update(data.updates)
+      .update(data.updates as any)
       .eq("id", data.id)
       .select()
       .single();

@@ -160,7 +160,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         if (!user) return null;
         
         let avatarUrl: string | null = null;
-        const pathOrUrl = user.user_metadata?.avatar_url;
+        const pathOrUrl = user.user_metadata?.["avatar_url"];
         if (pathOrUrl) {
           if (pathOrUrl.startsWith("http")) {
             avatarUrl = pathOrUrl;
@@ -177,7 +177,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         return {
           id: user.id,
           email: user.email,
-          nome: user.user_metadata?.full_name || "",
+          nome: user.user_metadata?.["full_name"] || "",
           avatarUrl,
         };
       } catch {

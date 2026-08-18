@@ -48,9 +48,13 @@ const getDayOfWeekName = (dateStr: string) => {
   if (!dateStr) return "";
   const parts = dateStr.split("-");
   if (parts.length !== 3) return "";
-  const year = parseInt(parts[0], 10);
-  const month = parseInt(parts[1], 10) - 1;
-  const day = parseInt(parts[2], 10);
+  const yStr = parts[0];
+  const mStr = parts[1];
+  const dStr = parts[2];
+  if (!yStr || !mStr || !dStr) return "";
+  const year = parseInt(yStr, 10);
+  const month = parseInt(mStr, 10) - 1;
+  const day = parseInt(dStr, 10);
   const date = new Date(year, month, day);
   
   const dayNames = [
