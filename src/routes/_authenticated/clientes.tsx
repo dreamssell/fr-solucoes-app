@@ -155,6 +155,7 @@ function Clientes() {
     }
     setNewDocs((prev) => prev.map((d) => (d.id === id ? { ...d, file } : d)));
   };
+  const [isImportMode, setIsImportMode] = useState(false);
   const [formData, setFormData] = useState({
     full_name: "",
     phone: "",
@@ -170,6 +171,11 @@ function Clientes() {
     initial_loan_capital: "",
     initial_loan_installments: "10",
     initial_loan_frequency: "diario",
+    initial_loan_profit_input: "10",
+    initial_loan_profit_kind: "percentual" as "fixo" | "percentual",
+    initial_loan_start_date: undefined as Date | undefined,
+    initial_loan_current_installment: "1",
+    initial_loan_apply_interest_composition: false,
   });
 
   const handleCreate = async () => {
@@ -212,6 +218,17 @@ function Clientes() {
       if (isNaN(parsedInstallments) || parsedInstallments <= 0) {
         toast.error("Quantidade de parcelas deve ser maior que zero");
         return;
+      }
+      if (isImportMode) {
+        if (!formData.initial_loan_start_date) {
+          toast.error("Preencha a data que iniciou o empréstimo");
+          return;
+        }
+        const currentInst = parseInt(formData.initial_loan_current_installment);
+        if (isNaN(currentInst) || currentInst <= 0 || currentInst > parsedInstallments) {
+          toast.error("A parcela atual deve ser maior que zero e menor ou igual ao total de parcelas");
+          return;
+        }
       }
     }
 
@@ -266,21 +283,42 @@ function Clientes() {
       }
 
       if (formData.create_initial_loan && client?.id) {
-        const selectedEmployee = dbEmployees?.find(e => e.id === formData.employee_id);
-        const commissionRate = selectedEmployee?.commission_rate_percent ?? 10;
+        if (isImportMode) {
+          const paidInstallments = Math.max(0, parseInt(formData.initial_loan_current_installment) - 1);
+          await requestLoanApprovalFn({
+            data: {
+              client_id: client.id,
+              capital_cents: Math.round(parseBRLInput(formData.initial_loan_capital) * 100),
+              frequency: formData.initial_loan_frequency as any,
+              installments_count: parseInt(formData.initial_loan_installments),
+              employee_profit_input: parseFloat(formData.initial_loan_profit_input) || 0,
+              employee_profit_kind: formData.initial_loan_profit_kind,
+              start_date: formData.initial_loan_start_date
+                ? formData.initial_loan_start_date.toISOString().slice(0, 10)
+                : new Date().toISOString().slice(0, 10),
+              apply_interest_composition: formData.initial_loan_apply_interest_composition,
+              is_import: true,
+              imported_paid_installments: paidInstallments,
+            }
+          });
+          toast.success("Empréstimo em andamento importado com sucesso (aguardando aprovação)!");
+        } else {
+          const selectedEmployee = dbEmployees?.find(e => e.id === formData.employee_id);
+          const commissionRate = selectedEmployee?.commission_rate_percent ?? 10;
 
-        await requestLoanApprovalFn({
-          data: {
-            client_id: client.id,
-            capital_cents: Math.round(parseBRLInput(formData.initial_loan_capital) * 100),
-            frequency: formData.initial_loan_frequency as any,
-            installments_count: parseInt(formData.initial_loan_installments),
-            employee_profit_input: commissionRate,
-            employee_profit_kind: "percentual",
-            start_date: new Date().toISOString().slice(0, 10),
-          }
-        });
-        toast.success("Empréstimo inicial solicitado para aprovação!");
+          await requestLoanApprovalFn({
+            data: {
+              client_id: client.id,
+              capital_cents: Math.round(parseBRLInput(formData.initial_loan_capital) * 100),
+              frequency: formData.initial_loan_frequency as any,
+              installments_count: parseInt(formData.initial_loan_installments),
+              employee_profit_input: commissionRate,
+              employee_profit_kind: "percentual",
+              start_date: new Date().toISOString().slice(0, 10),
+            }
+          });
+          toast.success("Empréstimo inicial solicitado para aprovação!");
+        }
       }
 
       setIsNewClientOpen(false);
@@ -300,6 +338,11 @@ function Clientes() {
         initial_loan_capital: "",
         initial_loan_installments: "10",
         initial_loan_frequency: "diario",
+        initial_loan_profit_input: "10",
+        initial_loan_profit_kind: "percentual",
+        initial_loan_start_date: undefined,
+        initial_loan_current_installment: "1",
+        initial_loan_apply_interest_composition: false,
       });
     } catch (e: any) {
       toast.error(e.message || "Erro ao cadastrar cliente");
@@ -457,8 +500,20 @@ function Clientes() {
               Exportar PDF
             </Button>
             <Button
-              onClick={() => setIsNewClientOpen(true)}
-              className="bg-gold text-black hover:bg-gold/90"
+              onClick={() => {
+                setIsImportMode(true);
+                setIsNewClientOpen(true);
+              }}
+              className="bg-success text-primary-foreground hover:bg-success/90 font-bold"
+            >
+              <Plus className="mr-2 h-4 w-4" /> Importar Cliente
+            </Button>
+            <Button
+              onClick={() => {
+                setIsImportMode(false);
+                setIsNewClientOpen(true);
+              }}
+              className="bg-gold text-black hover:bg-gold/90 font-bold"
             >
               <Plus className="mr-2 h-4 w-4" /> Novo Cliente
             </Button>
@@ -650,9 +705,11 @@ function Clientes() {
       <Dialog open={isNewClientOpen} onOpenChange={setIsNewClientOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Novo Cadastro de Cliente</DialogTitle>
+            <DialogTitle>{isImportMode ? "Importar Cliente" : "Novo Cadastro de Cliente"}</DialogTitle>
             <DialogDescription>
-              Preencha os dados do cliente para iniciar novos contratos.
+              {isImportMode
+                ? "Importe um cliente físico com empréstimo em andamento."
+                : "Preencha os dados do cliente para iniciar novos contratos."}
             </DialogDescription>
           </DialogHeader>
 
@@ -840,7 +897,9 @@ function Clientes() {
                   onCheckedChange={(checked) => setFormData((s) => ({ ...s, create_initial_loan: !!checked }))}
                 />
                 <Label htmlFor="create_loan" className="text-sm font-semibold text-gold cursor-pointer select-none">
-                  Cadastrar Empréstimo Inicial para este Cliente
+                  {isImportMode
+                    ? "Cadastrar Empréstimo em andamento para este Cliente"
+                    : "Cadastrar Empréstimo Inicial para este Cliente"}
                 </Label>
               </div>
             </div>
@@ -856,34 +915,131 @@ function Clientes() {
                     onChange={(e) => setFormData((s) => ({ ...s, initial_loan_capital: maskBRL(e.target.value) }))}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="loan_installments">Quantidade de Parcelas *</Label>
-                  <Input
-                    id="loan_installments"
-                    type="number"
-                    min="1"
-                    placeholder="10"
-                    value={formData.initial_loan_installments}
-                    onChange={(e) => setFormData((s) => ({ ...s, initial_loan_installments: e.target.value }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="loan_frequency">Frequência de Cobrança</Label>
-                  <Select
-                    value={formData.initial_loan_frequency}
-                    onValueChange={(v) => setFormData((s) => ({ ...s, initial_loan_frequency: v as any }))}
-                  >
-                    <SelectTrigger id="loan_frequency" className="bg-surface">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="diario">Diário</SelectItem>
-                      <SelectItem value="semanal">Semanal</SelectItem>
-                      <SelectItem value="quinzenal">Quinzenal</SelectItem>
-                      <SelectItem value="mensal">Mensal</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+
+                {isImportMode ? (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="loan_profit_kind">Tipo de Lucro do Funcionário</Label>
+                      <Select
+                        value={formData.initial_loan_profit_kind}
+                        onValueChange={(v) => setFormData((s) => ({ ...s, initial_loan_profit_kind: v as any }))}
+                      >
+                        <SelectTrigger id="loan_profit_kind" className="bg-surface">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="percentual">Percentual (%)</SelectItem>
+                          <SelectItem value="fixo">Valor Fixo (R$)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="loan_profit_input">
+                        {formData.initial_loan_profit_kind === "percentual" ? "Comissão (%)" : "Valor do Lucro (R$)"}
+                      </Label>
+                      <Input
+                        id="loan_profit_input"
+                        type="number"
+                        min="0"
+                        step="any"
+                        placeholder={formData.initial_loan_profit_kind === "percentual" ? "10" : "0.00"}
+                        value={formData.initial_loan_profit_input}
+                        onChange={(e) => setFormData((s) => ({ ...s, initial_loan_profit_input: e.target.value }))}
+                      />
+                    </div>
+
+                    <div className="space-y-2 col-span-1 sm:col-span-2">
+                      <DatePicker
+                        label="Data que Iniciou o Empréstimo *"
+                        setDate={(d) => setFormData((s) => ({ ...s, initial_loan_start_date: d }))}
+                        date={formData.initial_loan_start_date}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="loan_current_installment">Parcela Atual/Próxima a cobrar (xx) *</Label>
+                      <Input
+                        id="loan_current_installment"
+                        type="number"
+                        min="1"
+                        placeholder="1"
+                        value={formData.initial_loan_current_installment}
+                        onChange={(e) => setFormData((s) => ({ ...s, initial_loan_current_installment: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="loan_installments">Total de Parcelas (yy) *</Label>
+                      <Input
+                        id="loan_installments"
+                        type="number"
+                        min="1"
+                        placeholder="10"
+                        value={formData.initial_loan_installments}
+                        onChange={(e) => setFormData((s) => ({ ...s, initial_loan_installments: e.target.value }))}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="loan_frequency">Frequência de Cobrança</Label>
+                      <Select
+                        value={formData.initial_loan_frequency}
+                        onValueChange={(v) => setFormData((s) => ({ ...s, initial_loan_frequency: v as any }))}
+                      >
+                        <SelectTrigger id="loan_frequency" className="bg-surface">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="diario">Diário</SelectItem>
+                          <SelectItem value="semanal">Semanal</SelectItem>
+                          <SelectItem value="quinzenal">Quinzenal</SelectItem>
+                          <SelectItem value="mensal">Mensal</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="col-span-1 sm:col-span-2 flex items-center gap-2 pt-2">
+                      <Checkbox
+                        id="loan_apply_composition"
+                        checked={formData.initial_loan_apply_interest_composition}
+                        onCheckedChange={(checked) => setFormData((s) => ({ ...s, initial_loan_apply_interest_composition: !!checked }))}
+                      />
+                      <Label htmlFor="loan_apply_composition" className="text-sm font-semibold text-gold cursor-pointer select-none">
+                        Recomposição de Juros (+30% a cada 30 dias excedentes ao primeiro mês)
+                      </Label>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="loan_installments">Quantidade de Parcelas *</Label>
+                      <Input
+                        id="loan_installments"
+                        type="number"
+                        min="1"
+                        placeholder="10"
+                        value={formData.initial_loan_installments}
+                        onChange={(e) => setFormData((s) => ({ ...s, initial_loan_installments: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="loan_frequency">Frequência de Cobrança</Label>
+                      <Select
+                        value={formData.initial_loan_frequency}
+                        onValueChange={(v) => setFormData((s) => ({ ...s, initial_loan_frequency: v as any }))}
+                      >
+                        <SelectTrigger id="loan_frequency" className="bg-surface">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="diario">Diário</SelectItem>
+                          <SelectItem value="semanal">Semanal</SelectItem>
+                          <SelectItem value="quinzenal">Quinzenal</SelectItem>
+                          <SelectItem value="mensal">Mensal</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </>
+                )}
               </>
             )}
           </div>

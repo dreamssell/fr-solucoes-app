@@ -4,6 +4,8 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { buildLoan, Frequencia } from "@/finance";
 import { calculateDueDate } from "@/finance/calculate-due-date";
+import crypto from "crypto";
+
 const loanInputSchema = z.object({
   client_id: z.string().uuid(),
   capital_cents: z.number().int().positive(),
@@ -14,6 +16,8 @@ const loanInputSchema = z.object({
   start_date: z.string(),
   notes: z.string().optional().nullable(),
   apply_interest_composition: z.boolean().optional(),
+  is_import: z.boolean().optional(),
+  imported_paid_installments: z.number().optional(),
 });
 
 const buildTerms = (data: z.infer<typeof loanInputSchema>) => {
@@ -54,6 +58,8 @@ const buildTerms = (data: z.infer<typeof loanInputSchema>) => {
     fr_rate: calculated.taxaFr,
     employee_profit_kind: data.employee_profit_kind,
     employee_profit_input: data.employee_profit_input,
+    is_import: data.is_import,
+    imported_paid_installments: data.imported_paid_installments,
     installments,
   };
 };
@@ -106,6 +112,48 @@ export const decideLoanApproval = createServerFn({ method: "POST" })
       p_decision: data.decision,
       p_reason: data.reason ?? null,
     });
+
+    if (data.decision === "approved") {
+      const { data: loan } = await context.supabase
+        .from("loans")
+        .select("approval_snapshot")
+        .eq("id", data.loan_id)
+        .single();
+
+      const terms = loan?.approval_snapshot && typeof loan.approval_snapshot === "object"
+        ? (loan.approval_snapshot as any).terms
+        : null;
+
+      if (terms && terms.is_import) {
+        const paidCount = parseInt(terms.imported_paid_installments || "0", 10);
+        if (paidCount > 0) {
+          const { data: installments } = await context.supabase
+            .from("installments")
+            .select("id, total_amount")
+            .eq("loan_id", data.loan_id)
+            .order("number", { ascending: true });
+
+          if (installments && installments.length >= paidCount) {
+            for (let i = 0; i < paidCount; i++) {
+              const inst = installments[i];
+              if (inst) {
+                await context.supabase.rpc("process_payment_atomic", {
+                  p_idempotency_key: crypto.randomUUID(),
+                  p_installment_id: inst.id,
+                  p_amount_cents: inst.total_amount,
+                  p_penalty_cents: 0,
+                  p_paid_at: terms.start_date || new Date().toISOString().slice(0, 10),
+                  p_method: "pix",
+                  p_notes: "Importação - Parcela já paga no ambiente físico",
+                  p_user_id: context.userId,
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+
     return { success: true };
   });
 
