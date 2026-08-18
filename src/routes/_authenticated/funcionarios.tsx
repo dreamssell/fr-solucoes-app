@@ -458,6 +458,18 @@ function PainelFuncionario({
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  const [activeTab, setActiveTab] = useState("carteira");
+  const [carteiraPage, setCarteiraPage] = useState(1);
+  const [cobrancasPage, setCobrancasPage] = useState(1);
+  const [cobrancasFreqFilter, setCobrancasFreqFilter] = useState("todos");
+
+  const carteiraPageSize = 10;
+  const cobrancasPageSize = 10;
+
+  useEffect(() => {
+    setCobrancasPage(1);
+  }, [cobrancasFreqFilter]);
+
   useEffect(() => {
     setEditName(funcionario.nome);
     setEditPhone(funcionario.phone);
@@ -555,21 +567,71 @@ function PainelFuncionario({
     },
   });
 
-  const insts = flattenInstallments(loans).filter((i) => i.employee_id === funcionario.id);
+    const insts = flattenInstallments(loans).filter((i) => i.employee_id === funcionario.id);
 
   const carteira = useMemo(() => {
-    const map = new Map<string, { nome: string; saldoCents: number }>();
+    const map = new Map<string, { nome: string; saldoCents: number; frequencies: Set<string> }>();
     for (const i of insts) {
       const nome = i.client?.full_name ?? "Cliente";
-      const prev = map.get(i.client_id) ?? { nome, saldoCents: 0 };
-      map.set(i.client_id, { nome, saldoCents: prev.saldoCents + i.outstanding_amount });
+      const freq = i.loan?.frequency;
+      const prev = map.get(i.client_id) ?? { nome, saldoCents: 0, frequencies: new Set<string>() };
+      if (freq) prev.frequencies.add(freq);
+      map.set(i.client_id, {
+        nome,
+        saldoCents: prev.saldoCents + i.outstanding_amount,
+        frequencies: prev.frequencies,
+      });
     }
-    return [...map.entries()].map(([id, v]) => ({ id, ...v }));
+    return [...map.entries()].map(([id, v]) => ({
+      id,
+      ...v,
+      freqText: v.frequencies.size > 0
+        ? Array.from(v.frequencies)
+            .map((f) => f.charAt(0).toUpperCase() + f.slice(1))
+            .join(", ")
+        : "—",
+    }));
   }, [insts]);
 
-  const cobrancas = insts
-    .filter((i) => !isSettled(i.status) && toDay(i.due_date) <= hoje)
-    .sort((a, b) => toDay(a.due_date).localeCompare(toDay(b.due_date)));
+  const paginatedCarteira = useMemo(() => {
+    const start = (carteiraPage - 1) * carteiraPageSize;
+    return carteira.slice(start, start + carteiraPageSize);
+  }, [carteira, carteiraPage]);
+
+  const filteredCobrancas = useMemo(() => {
+    const rawCobrancas = insts
+      .filter((i) => !isSettled(i.status) && toDay(i.due_date) <= hoje)
+      .sort((a, b) => toDay(a.due_date).localeCompare(toDay(b.due_date)));
+      
+    if (cobrancasFreqFilter === "todos") return rawCobrancas;
+    return rawCobrancas.filter((c) => c.loan?.frequency === cobrancasFreqFilter);
+  }, [insts, hoje, cobrancasFreqFilter]);
+
+  const paginatedCobrancas = useMemo(() => {
+    const start = (cobrancasPage - 1) * cobrancasPageSize;
+    return filteredCobrancas.slice(start, start + cobrancasPageSize);
+  }, [filteredCobrancas, cobrancasPage]);
+
+  const whatsappMessage = useMemo(() => {
+    const periodicityLabel = cobrancasFreqFilter === "todos"
+      ? "Todas"
+      : cobrancasFreqFilter.charAt(0).toUpperCase() + cobrancasFreqFilter.slice(1);
+      
+    const uniqueClientsCount = new Set(filteredCobrancas.map((c) => c.client_id)).size;
+
+    let text = `Clientes ${funcionario.nome} - ${periodicityLabel} - ${uniqueClientsCount}\n`;
+    
+    filteredCobrancas.forEach((c) => {
+      const clientName = c.client?.full_name ?? "Cliente";
+      const installmentNum = c.number.toString().padStart(2, "0");
+      const totalInstallments = (c.loan?.installments_count ?? 0).toString().padStart(2, "0");
+      const value = formatBRL(c.outstanding_amount / 100);
+      
+      text += `${clientName} - Parcela ${installmentNum} de ${totalInstallments} - ${value}\n`;
+    });
+    
+    return text.trim();
+  }, [cobrancasFreqFilter, filteredCobrancas, funcionario.nome]);
 
   const rawEmp = dbEmployees?.find((e) => e.id === funcionario.id);
   const penaltySplitPercent = rawEmp && "penalty_split_percent" in rawEmp ? Number((rawEmp as any).penalty_split_percent ?? 50) : 50;
@@ -593,7 +655,7 @@ function PainelFuncionario({
         </SheetHeader>
 
         <div className="space-y-5 px-4 pb-8">
-          <Tabs defaultValue="carteira">
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="w-full">
               <TabsTrigger value="carteira" className="flex-1">
                 Carteira
@@ -609,51 +671,143 @@ function PainelFuncionario({
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="carteira" className="pt-4">
-              <ul className="divide-y divide-border rounded-lg border border-border">
-                {carteira.map((c) => (
-                  <li
-                    key={c.id}
-                    className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-3 py-2.5 text-sm"
-                  >
-                    <span className="min-w-0 truncate">{c.nome}</span>
-                    <span className="shrink-0 font-display font-semibold text-gold">
-                      {formatBRL(c.saldoCents / 100)}
-                    </span>
-                  </li>
-                ))}
-                {carteira.length === 0 && (
-                  <li className="px-3 py-6 text-center text-sm text-muted-foreground">
-                    Sem contratos vinculados.
-                  </li>
-                )}
-              </ul>
+            <TabsContent value="carteira" className="pt-4 space-y-3">
+              <div className="rounded-lg border border-border">
+                <div className="grid grid-cols-[1fr_100px_90px] gap-3 px-3 py-2 text-xs font-bold uppercase tracking-wider text-muted-foreground bg-graphite/30 border-b border-border">
+                  <span>Cliente</span>
+                  <span>Periodicidade</span>
+                  <span className="text-right">Valor</span>
+                </div>
+                <ul className="divide-y divide-border">
+                  {paginatedCarteira.map((c) => (
+                    <li
+                      key={c.id}
+                      className="grid grid-cols-[1fr_100px_90px] gap-3 px-3 py-2.5 text-sm items-center"
+                    >
+                      <span className="min-w-0 truncate font-semibold">{c.nome}</span>
+                      <span className="text-xs text-muted-foreground capitalize">{c.freqText}</span>
+                      <span className="shrink-0 font-display font-semibold text-gold text-right">
+                        {formatBRL(c.saldoCents / 100)}
+                      </span>
+                    </li>
+                  ))}
+                  {carteira.length === 0 && (
+                    <li className="px-3 py-6 text-center text-sm text-muted-foreground">
+                      Sem contratos vinculados.
+                    </li>
+                  )}
+                </ul>
+              </div>
+
+              {carteira.length > carteiraPageSize && (
+                <div className="flex items-center justify-between pt-2">
+                  <span className="text-xs text-muted-foreground">
+                    Exibindo {Math.min((carteiraPage - 1) * carteiraPageSize + 1, carteira.length)} a{" "}
+                    {Math.min(carteiraPage * carteiraPageSize, carteira.length)} de {carteira.length}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-[11px] px-2.5 font-semibold"
+                      onClick={() => setCarteiraPage((p) => Math.max(p - 1, 1))}
+                      disabled={carteiraPage === 1}
+                    >
+                      Anterior
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-[11px] px-2.5 font-semibold"
+                      onClick={() => setCarteiraPage((p) => Math.min(p + 1, Math.ceil(carteira.length / carteiraPageSize)))}
+                      disabled={carteiraPage === Math.ceil(carteira.length / carteiraPageSize)}
+                    >
+                      Próximo
+                    </Button>
+                  </div>
+                </div>
+              )}
             </TabsContent>
 
-            <TabsContent value="cobrancas" className="pt-4">
-              <ul className="divide-y divide-border rounded-lg border border-border">
-                {cobrancas.map((c) => (
-                  <li
-                    key={c.id}
-                    className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5 text-sm"
-                  >
-                    <span className="min-w-0">
-                      <span className="block truncate">{c.client?.full_name ?? "Cliente"}</span>
-                      <span className="block text-xs text-muted-foreground">
-                        parcela {c.number} · {formatDate(c.due_date)}
+            <TabsContent value="cobrancas" className="pt-4 space-y-3">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs font-semibold text-muted-foreground">Filtrar por periodicidade</span>
+                <Select value={cobrancasFreqFilter} onValueChange={setCobrancasFreqFilter}>
+                  <SelectTrigger className="w-[160px] h-8 text-xs bg-surface">
+                    <SelectValue placeholder="Frequência" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todas</SelectItem>
+                    <SelectItem value="diario">Diário</SelectItem>
+                    <SelectItem value="semanal">Semanal</SelectItem>
+                    <SelectItem value="quinzenal">Quinzenal</SelectItem>
+                    <SelectItem value="mensal">Mensal</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="rounded-lg border border-border">
+                <div className="grid grid-cols-[1fr_100px_90px] gap-3 px-3 py-2 text-xs font-bold uppercase tracking-wider text-muted-foreground bg-graphite/30 border-b border-border">
+                  <span>Cliente / Parcela</span>
+                  <span>Periodicidade</span>
+                  <span className="text-right">Valor</span>
+                </div>
+                <ul className="divide-y divide-border">
+                  {paginatedCobrancas.map((c) => (
+                    <li
+                      key={c.id}
+                      className="grid grid-cols-[1fr_100px_90px] gap-3 px-3 py-2.5 text-sm items-center"
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate font-semibold">{c.client?.full_name ?? "Cliente"}</span>
+                        <span className="block text-[10px] text-muted-foreground uppercase tracking-tight">
+                          parc. {c.number.toString().padStart(2, "0")} · {formatDate(c.due_date)}
+                        </span>
                       </span>
-                    </span>
-                    <span className="shrink-0 font-display font-semibold">
-                      {formatBRL(c.outstanding_amount / 100)}
-                    </span>
-                  </li>
-                ))}
-                {cobrancas.length === 0 && (
-                  <li className="px-3 py-6 text-center text-sm text-muted-foreground">
-                    Nenhuma cobrança pendente.
-                  </li>
-                )}
-              </ul>
+                      <span className="text-xs text-muted-foreground capitalize">
+                        {c.loan?.frequency || "—"}
+                      </span>
+                      <span className="shrink-0 font-display font-semibold text-right">
+                        {formatBRL(c.outstanding_amount / 100)}
+                      </span>
+                    </li>
+                  ))}
+                  {filteredCobrancas.length === 0 && (
+                    <li className="px-3 py-6 text-center text-sm text-muted-foreground">
+                      Nenhuma cobrança pendente.
+                    </li>
+                  )}
+                </ul>
+              </div>
+
+              {filteredCobrancas.length > cobrancasPageSize && (
+                <div className="flex items-center justify-between pt-2">
+                  <span className="text-xs text-muted-foreground">
+                    Exibindo {Math.min((cobrancasPage - 1) * cobrancasPageSize + 1, filteredCobrancas.length)} a{" "}
+                    {Math.min(cobrancasPage * cobrancasPageSize, filteredCobrancas.length)} de {filteredCobrancas.length}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-[11px] px-2.5 font-semibold"
+                      onClick={() => setCobrancasPage((p) => Math.max(p - 1, 1))}
+                      disabled={cobrancasPage === 1}
+                    >
+                      Anterior
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-[11px] px-2.5 font-semibold"
+                      onClick={() => setCobrancasPage((p) => Math.min(p + 1, Math.ceil(filteredCobrancas.length / cobrancasPageSize)))}
+                      disabled={cobrancasPage === Math.ceil(filteredCobrancas.length / cobrancasPageSize)}
+                    >
+                      Próximo
+                    </Button>
+                  </div>
+                </div>
+              )}
             </TabsContent>
 
             <TabsContent value="acertos" className="space-y-3 pt-4">
@@ -843,7 +997,7 @@ function PainelFuncionario({
             disabled={!getWhatsAppLink(funcionario.whatsapp)}
           >
             <a
-              href={getWhatsAppLink(funcionario.whatsapp)}
+              href={getWhatsAppLink(funcionario.whatsapp, whatsappMessage)}
               target="_blank"
               rel="noreferrer noopener"
             >
