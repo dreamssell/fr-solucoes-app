@@ -166,7 +166,7 @@ export const getLoans = createServerFn({ method: "GET" })
     const { supabase } = context;
     const { data, error } = await supabase
       .from("loans")
-      .select("*, clients(full_name, employees(full_name)), installments(*)")
+      .select("*, clients(full_name, employees(id, full_name)), installments(*)")
       .order("created_at", { ascending: false });
 
     if (error) {

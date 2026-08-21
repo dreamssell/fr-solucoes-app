@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Search, MessageCircle, ListChecks, Loader2, CheckCircle2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell, PageHeader } from "@/components/fr/AppShell";
@@ -39,6 +39,7 @@ import { getLocalDateString } from "@/lib/dates";
 export const Route = createFileRoute("/_authenticated/cobrancas")({
   validateSearch: (search: Record<string, unknown>) => ({
     employee_id: typeof search["employee_id"] === "string" ? search["employee_id"] : undefined,
+    installment: typeof search["installment"] === "string" ? search["installment"] : undefined,
   }),
   head: () => ({
     meta: [
@@ -59,8 +60,132 @@ export const Route = createFileRoute("/_authenticated/cobrancas")({
   component: Cobrancas,
 });
 
+const formatCustomBRL = (amountCents: number) => {
+  const amount = Math.round(amountCents / 100);
+  return amount.toLocaleString("pt-BR") + "$";
+};
+
+function generateMessageText(
+  inst: FlatInstallment,
+  allInstallments: FlatInstallment[],
+  dbEmployees: any[] | undefined,
+  hoje: string
+): string {
+  const clientName = (inst.client?.full_name || "CLIENTE").toUpperCase();
+  const empInfo = dbEmployees?.find((e) => e.id === inst.employee?.id) || inst.employee;
+  const pixKey = empInfo?.pix_key || "novafinanceira0202@gmail.com";
+  const bank = empInfo?.notes || "MERCADO PAGO IP LTDA.";
+  const empName = empInfo?.full_name || "Lucas Emanuel Sérgio";
+
+  const hr = new Date().getHours();
+  let saudacao = "BOM DIA";
+  if (hr >= 12 && hr < 18) saudacao = "BOA TARDE";
+  else if (hr >= 18 || hr < 5) saudacao = "BOA NOITE";
+
+  const instDate = (inst.due_date || "").split("T")[0] ?? "";
+  const quitada = isSettled(inst.status);
+  const isAtrasado = !quitada && instDate < hoje;
+
+  // Encontrar todas as parcelas vencidas/atrasadas desse contrato (loan)
+  const loanInsts = allInstallments.filter((i) => i.loan?.id === inst.loan?.id && !isSettled(i.status));
+  const overdueInsts = loanInsts.filter((i) => {
+    const d = (i.due_date || "").split("T")[0] ?? "";
+    return d < hoje;
+  });
+
+  if (isAtrasado || overdueInsts.length > 0) {
+    // 4 - Mensagem de Atraso
+    const targetInsts = overdueInsts.length > 0 ? overdueInsts : [inst];
+    const sortedInsts = [...targetInsts].sort((a, b) => a.number - b.number);
+    const numbersStr = sortedInsts.map((i) => String(i.number).padStart(2, '0')).join(",");
+    const totalCount = String(inst.loan?.installments_count || 8).padStart(2, '0');
+    const totalCents = targetInsts.reduce((sum, i) => sum + i.outstanding_amount, 0);
+    const valorStr = formatCustomBRL(totalCents);
+
+    const oldest = targetInsts.reduce((old, curr) => {
+      if (!old) return curr;
+      return curr.due_date < old.due_date ? curr : old;
+    }, null as FlatInstallment | null);
+    const oldestDate = oldest ? (oldest.due_date || "").split("T")[0] : "";
+    const delayDays = oldestDate
+      ? Math.max(
+          0,
+          Math.floor(
+            (Date.now() - new Date(`${oldestDate}T12:00:00`).getTime()) / 86400000,
+          ),
+        )
+      : 0;
+    const weeksLate = Math.max(1, Math.ceil(delayDays / 7));
+
+    return (
+      `${clientName}\n\n\n` +
+      `___🚨${saudacao}🚨___\n \n` +
+      `⚡️ATENÇÃO ⚡️\n` +
+      `Seu prazo para pagamento da parcela ${numbersStr}/${totalCount} venceu ❌❌❌❌❌. A partir das 00:00 horas  será contada uma taxa de juros diária sobre o valor do seu empréstimo.  \n\n` +
+      `VALOR: ${valorStr}💰\n\n` +
+      `Pix para realizar o pagamento:\n` +
+      `${pixKey}\n\n` +
+      `${empName} \n` +
+      `${bank}\n\n` +
+      `(MENSAGEM AUTOMÁTICA)\n\n` +
+      `❌❌${weeksLate} SEMANAS ATRASADO❌❌\n` +
+      `❌❌❌❌❌❌❌❌❌❌❌❌❌❌`
+    );
+  }
+
+  const freq = inst.loan?.frequency;
+  const valorStr = formatCustomBRL(inst.outstanding_amount);
+
+  if (freq === "diario") {
+    // 1 - Diário
+    const instNumberFormatted = String(inst.number).padStart(2, '0');
+    const totalInstsFormatted = String(inst.loan?.installments_count || 20).padStart(2, '0');
+    return (
+      `${clientName}\n\n` +
+      `___❗️ ATENÇÃO ❗️__\n \n` +
+      `                       ${saudacao}\n\n` +
+      `parcela:${instNumberFormatted}/${totalInstsFormatted}💰 \n` +
+      `VALOR:${valorStr} \n\n` +
+      `‼️ OBS:PAGAMENTO SOMENTE EM PIX ‼️\n\n` +
+      `Pix para realizar o pagamento:\n` +
+      `${pixKey}\n\n` +
+      `${empName} \n` +
+      `${bank}`
+    );
+  } else if (freq === "semanal") {
+    // 2 - Semanal
+    const instNumberFormatted = String(inst.number).padStart(2, '0');
+    const totalInstsFormatted = String(inst.loan?.installments_count || 4).padStart(2, '0');
+    return (
+      `${clientName}\n\n\n` +
+      `___🚨${saudacao}🚨___\n \n` +
+      `⚡️ATENÇÃO ⚡️\n` +
+      `Seu prazo para pagamento da parcela ${instNumberFormatted}/${totalInstsFormatted} vence HOJE. A partir das 00:00 horas  será contada uma taxa de juros diária sobre o valor do seu empréstimo.  \n\n` +
+      `VALOR: ${valorStr}💰\n\n` +
+      `Pix para realizar o pagamento:\n` +
+      `${pixKey}\n\n` +
+      `${empName} \n` +
+      `${bank}`
+    );
+  } else {
+    // 3 - Quinzenal ou Mensal
+    const freqLabel = freq === "quinzenal" ? "QUINZENAL" : "MENSAL";
+    return (
+      `${clientName}\n\n\n` +
+      `___🚨${saudacao}🚨___\n \n` +
+      `⚡️ATENÇÃO ⚡️\n` +
+      `Seu prazo para pagamento da parcela ${freqLabel} vence HOJE. A partir das 00:00 horas  será contada uma taxa de juros diária sobre o valor do seu empréstimo.  \n\n` +
+      `VALOR: ${valorStr}💰\n\n` +
+      `Pix para realizar o pagamento:\n` +
+      `${pixKey}\n\n` +
+      `${empName} \n` +
+      `${bank}`
+    );
+  }
+}
+
 function Cobrancas() {
-  const { employee_id: employeeIdParam } = Route.useSearch();
+  const { employee_id: employeeIdParam, installment: installmentParam } = Route.useSearch();
 
   const [busca, setBusca] = useState("");
   const [funcFilter, setFuncFilter] = useState(employeeIdParam || "todos");
@@ -79,6 +204,34 @@ function Cobrancas() {
     return flattenInstallments(dbLoans as unknown as LoanRow[]);
   }, [dbLoans]);
 
+  useEffect(() => {
+    if (installmentParam && allInstallments.length > 0) {
+      const target = allInstallments.find((i) => i.id === installmentParam);
+      if (target) {
+        if (target.employee?.id) {
+          setFuncFilter(target.employee.id);
+        }
+        
+        const instDate = (target.due_date || "").split("T")[0] ?? "";
+        const hoje = getLocalDateString();
+        const quitada = isSettled(target.status);
+
+        if (quitada) {
+          setStatusFilter("pago");
+        } else if (instDate < hoje) {
+          setStatusFilter("atrasado");
+        } else {
+          setStatusFilter("pendente");
+          setDataFilter(instDate);
+        }
+
+        if (target.client?.full_name) {
+          setBusca(target.client.full_name);
+        }
+      }
+    }
+  }, [installmentParam, allInstallments]);
+
   const filteredInstallments = useMemo(() => {
     const hoje = getLocalDateString();
     return allInstallments.filter((inst) => {
@@ -93,9 +246,13 @@ function Cobrancas() {
       const quitada = isSettled(inst.status);
 
       let okStatus = true;
-      if (statusFilter === "pendente") okStatus = !quitada && instDate === (dataFilter || hoje);
-      else if (statusFilter === "atrasado") okStatus = !quitada && instDate < hoje;
-      else if (statusFilter === "pago") okStatus = inst.status === "pago";
+      if (statusFilter === "pendente") {
+        okStatus = !quitada && (instDate === (dataFilter || hoje) || instDate < hoje);
+      } else if (statusFilter === "atrasado") {
+        okStatus = !quitada && instDate < hoje;
+      } else if (statusFilter === "pago") {
+        okStatus = inst.status === "pago";
+      }
 
       return okBusca && okFunc && okStatus;
     });
@@ -115,22 +272,8 @@ function Cobrancas() {
     setSelecionados((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
 
   const prepararIndividual = (inst: FlatInstallment) => {
-    const firstName = inst.client?.full_name?.split(" ")[0] || "Cliente";
-    const delayDays = Math.max(
-      0,
-      Math.floor(
-        (Date.now() - new Date(`${(inst.due_date || "").split("T")[0]}T12:00:00`).getTime()) /
-          86400000,
-      ),
-    );
-
-    setMensagem(
-      `Olá, ${firstName}! Aqui é do FR Financeiro.\n` +
-        `Sua parcela ${inst.number} venceu em ${formatDate(inst.due_date)}.\n` +
-        (delayDays > 0 ? `Atraso de ${delayDays} dia(s).\n` : "") +
-        `Valor em aberto: ${formatBRL(inst.outstanding_amount / 100)}.\n` +
-        `Podemos confirmar o pagamento hoje?`,
-    );
+    const hoje = getLocalDateString();
+    setMensagem(generateMessageText(inst, allInstallments, dbEmployees, hoje));
   };
 
   const prepararLista = (empId?: string, forceItems?: FlatInstallment[]) => {
@@ -145,18 +288,15 @@ function Cobrancas() {
       empId || (selecionadas.length > 0 ? (selecionadas[0]?.employee?.id ?? null) : null);
     const targetEmp = dbEmployees?.find((f) => f.id === targetEmpId);
 
-    const total = selecionadas.reduce((s, i) => s + i.outstanding_amount, 0);
-
+    const hoje = getLocalDateString();
+    const divisor = "\n\n==============================\n\n";
     const texto =
-      `LISTA DE COBRANÇA — ${formatDate(dataFilter || "")}\n\n` +
-      (targetEmp ? `Responsável: ${targetEmp.full_name}\n\n` : "") +
+      `LISTA DE COBRANÇAS — ${formatDate(dataFilter || "")}\n` +
+      (targetEmp ? `Responsável: ${targetEmp.full_name}\n` : "") +
+      `==============================\n\n` +
       selecionadas
-        .map(
-          (i) =>
-            `• ${i.client?.full_name} — parcela ${i.number} — ${formatBRL(i.outstanding_amount / 100)}`,
-        )
-        .join("\n") +
-      `\n\nTotal previsto: ${formatBRL(total / 100)}`;
+        .map((i) => generateMessageText(i, allInstallments, dbEmployees, hoje))
+        .join(divisor);
 
     setMensagem(texto);
     if (targetEmpId) {
