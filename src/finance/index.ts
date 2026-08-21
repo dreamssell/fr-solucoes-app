@@ -129,30 +129,6 @@ export function buildLoan(input: LoanInput): LoanCalculado {
     taxaFr = input.taxaFrExcepcional ?? FR_DEFAULT_RATES[input.frequencia];
     if (taxaFr === undefined) throw new Error("frequência inválida");
 
-    // Recomposição de juros
-    if (input.applyInterestComposition !== false && input.startDate) {
-      let durationDays: number;
-      if (input.frequencia === "mensal") {
-        durationDays = input.qtdParcelas * 30;
-      } else if (input.frequencia === "diario") {
-        const weeks = Math.floor((input.qtdParcelas - 1) / 6);
-        const remainingDays = input.qtdParcelas - weeks * 6;
-        durationDays = weeks * 7 + remainingDays;
-      } else if (input.frequencia === "semanal") {
-        durationDays = input.qtdParcelas * 7;
-      } else if (input.frequencia === "quinzenal") {
-        durationDays = input.qtdParcelas * 15;
-      } else {
-        const lastDueDate = calculateDueDate(input.startDate, input.qtdParcelas, input.frequencia);
-        durationDays = Math.ceil((lastDueDate.getTime() - input.startDate.getTime()) / (24 * 60 * 60 * 1000));
-      }
-
-      if (durationDays > 30) {
-        const additionalMonths = Math.ceil((durationDays - 30) / 30);
-        taxaFr += additionalMonths * 0.3;
-      }
-    }
-
     const totalProfitCents = Math.round(input.capitalCents * taxaFr);
     lucroFrCents = totalProfitCents - lucroFuncionarioCents;
   }

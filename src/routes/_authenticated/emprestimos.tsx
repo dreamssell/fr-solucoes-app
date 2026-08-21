@@ -119,7 +119,6 @@ function Emprestimos() {
     lucroFuncionarioValor: "",
     lucroFuncionarioTipo: "fixo" as "fixo" | "percentual",
     startDate: new Date(),
-    applyInterestComposition: true,
   });
 
   const preview = useMemo(() => {
@@ -136,7 +135,6 @@ function Emprestimos() {
               }
             : { tipo: "percentual", valor: parseFloat(newLoan.lucroFuncionarioValor || "0") / 100 },
         qtdParcelas: parseInt(newLoan.qtdParcelas),
-        applyInterestComposition: newLoan.applyInterestComposition,
         startDate: newLoan.startDate,
         lucroFr: newLoan.lucroFrValor
           ? (newLoan.lucroFrTipo === "fixo"
@@ -359,7 +357,6 @@ function Emprestimos() {
         employee_profit_kind: newLoan.lucroFuncionarioTipo,
         start_date: formatLocalDateISO(newLoan.startDate),
         idempotency_key: idempotencyKey,
-        apply_interest_composition: newLoan.applyInterestComposition,
         fr_profit_input: newLoan.lucroFrValor
           ? (newLoan.lucroFrTipo === "fixo"
               ? parseBRLInput(newLoan.lucroFrValor)
@@ -379,7 +376,6 @@ function Emprestimos() {
         lucroFuncionarioValor: "",
         lucroFuncionarioTipo: "fixo",
         startDate: new Date(),
-        applyInterestComposition: true,
       });
     } catch (e) {
       // handled by hook
@@ -815,20 +811,6 @@ function Emprestimos() {
               />
             </div>
 
-            <div className="flex items-center gap-2 py-2 sm:col-span-2">
-              <input
-                id="apply-recomposicao"
-                type="checkbox"
-                checked={newLoan.applyInterestComposition}
-                onChange={(e) =>
-                  setNewLoan((s) => ({ ...s, applyInterestComposition: e.target.checked }))
-                }
-                className="h-4 w-4 rounded border-border text-gold focus:ring-gold bg-surface cursor-pointer"
-              />
-              <Label htmlFor="apply-recomposicao" className="text-xs text-muted-foreground font-medium cursor-pointer">
-                Recomposição de Juros (+30% a cada 30 dias excedentes ao primeiro mês)
-              </Label>
-            </div>
 
             {preview && (
               <div className="col-span-1 space-y-3 rounded-lg border border-gold/30 bg-gold/5 p-4 sm:col-span-2">

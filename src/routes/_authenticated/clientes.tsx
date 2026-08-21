@@ -175,7 +175,6 @@ function Clientes() {
     initial_loan_profit_kind: "percentual" as "fixo" | "percentual",
     initial_loan_start_date: undefined as Date | undefined,
     initial_loan_current_installment: "1",
-    initial_loan_apply_interest_composition: false,
   });
 
   const handleCreate = async () => {
@@ -296,7 +295,6 @@ function Clientes() {
               start_date: formData.initial_loan_start_date
                 ? formData.initial_loan_start_date.toISOString().slice(0, 10)
                 : new Date().toISOString().slice(0, 10),
-              apply_interest_composition: formData.initial_loan_apply_interest_composition,
               is_import: true,
               imported_paid_installments: paidInstallments,
             }
@@ -342,7 +340,6 @@ function Clientes() {
         initial_loan_profit_kind: "percentual",
         initial_loan_start_date: undefined,
         initial_loan_current_installment: "1",
-        initial_loan_apply_interest_composition: false,
       });
     } catch (e: any) {
       toast.error(e.message || "Erro ao cadastrar cliente");
@@ -997,16 +994,6 @@ function Clientes() {
                       </Select>
                     </div>
 
-                    <div className="col-span-1 sm:col-span-2 flex items-center gap-2 pt-2">
-                      <Checkbox
-                        id="loan_apply_composition"
-                        checked={formData.initial_loan_apply_interest_composition}
-                        onCheckedChange={(checked) => setFormData((s) => ({ ...s, initial_loan_apply_interest_composition: !!checked }))}
-                      />
-                      <Label htmlFor="loan_apply_composition" className="text-sm font-semibold text-gold cursor-pointer select-none">
-                        Recomposição de Juros (+30% a cada 30 dias excedentes ao primeiro mês)
-                      </Label>
-                    </div>
                   </>
                 ) : (
                   <>
