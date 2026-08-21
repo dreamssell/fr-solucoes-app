@@ -18,6 +18,8 @@ const loanInputSchema = z.object({
   apply_interest_composition: z.boolean().optional(),
   is_import: z.boolean().optional(),
   imported_paid_installments: z.number().optional(),
+  fr_profit_input: z.number().nonnegative().optional(),
+  fr_profit_kind: z.enum(["fixo", "percentual"]).optional(),
 });
 
 const buildTerms = (data: z.infer<typeof loanInputSchema>) => {
@@ -31,6 +33,11 @@ const buildTerms = (data: z.infer<typeof loanInputSchema>) => {
     qtdParcelas: data.installments_count,
     applyInterestComposition: !!data.apply_interest_composition,
     startDate: new Date(data.start_date),
+    lucroFr: data.fr_profit_input !== undefined && data.fr_profit_kind !== undefined
+      ? (data.fr_profit_kind === "fixo"
+          ? { tipo: "fixo", valor: Math.round(data.fr_profit_input * 100) }
+          : { tipo: "percentual", valor: data.fr_profit_input / 100 })
+      : undefined,
   });
 
   const startDate = new Date(data.start_date);

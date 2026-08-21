@@ -114,6 +114,8 @@ function Emprestimos() {
     capital: "",
     frequencia: "diario" as Frequencia,
     qtdParcelas: "1",
+    lucroFrValor: "12",
+    lucroFrTipo: "percentual" as "fixo" | "percentual",
     lucroFuncionarioValor: "",
     lucroFuncionarioTipo: "fixo" as "fixo" | "percentual",
     startDate: new Date(),
@@ -136,6 +138,14 @@ function Emprestimos() {
         qtdParcelas: parseInt(newLoan.qtdParcelas),
         applyInterestComposition: newLoan.applyInterestComposition,
         startDate: newLoan.startDate,
+        lucroFr: newLoan.lucroFrValor
+          ? (newLoan.lucroFrTipo === "fixo"
+              ? {
+                  tipo: "fixo",
+                  valor: Math.round(parseBRLInput(newLoan.lucroFrValor || "0") * 100),
+                }
+              : { tipo: "percentual", valor: parseFloat(newLoan.lucroFrValor || "0") / 100 })
+          : undefined,
       });
     } catch (e) {
       return null;
@@ -350,6 +360,12 @@ function Emprestimos() {
         start_date: formatLocalDateISO(newLoan.startDate),
         idempotency_key: idempotencyKey,
         apply_interest_composition: newLoan.applyInterestComposition,
+        fr_profit_input: newLoan.lucroFrValor
+          ? (newLoan.lucroFrTipo === "fixo"
+              ? parseBRLInput(newLoan.lucroFrValor)
+              : parseFloat(newLoan.lucroFrValor || "0"))
+          : undefined,
+        fr_profit_kind: newLoan.lucroFrValor ? newLoan.lucroFrTipo : undefined,
       });
       setIsNewLoanOpen(false);
       setIdempotencyKey(crypto.randomUUID());
@@ -358,6 +374,8 @@ function Emprestimos() {
         capital: "",
         frequencia: "diario",
         qtdParcelas: "1",
+        lucroFrValor: "12",
+        lucroFrTipo: "percentual",
         lucroFuncionarioValor: "",
         lucroFuncionarioTipo: "fixo",
         startDate: new Date(),
@@ -681,7 +699,22 @@ function Emprestimos() {
               <Label htmlFor="loan-freq">Periodicidade *</Label>
               <Select
                 value={newLoan.frequencia}
-                onValueChange={(v: Frequencia) => setNewLoan((s) => ({ ...s, frequencia: v }))}
+                onValueChange={(v: Frequencia) =>
+                  setNewLoan((s) => {
+                    const defaultRates: Record<Frequencia, number> = {
+                      diario: 12,
+                      semanal: 20,
+                      quinzenal: 30,
+                      mensal: 30,
+                    };
+                    return {
+                      ...s,
+                      frequencia: v,
+                      lucroFrValor: String(defaultRates[v]),
+                      lucroFrTipo: "percentual",
+                    };
+                  })
+                }
               >
                 <SelectTrigger id="loan-freq" className="bg-surface">
                   <SelectValue />
@@ -704,6 +737,40 @@ function Emprestimos() {
                 value={newLoan.qtdParcelas}
                 onChange={(e) => setNewLoan((s) => ({ ...s, qtdParcelas: e.target.value }))}
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="loan-fr-lucro">Lucro FR Financeiro</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="loan-fr-lucro"
+                  type="text"
+                  placeholder={newLoan.lucroFrTipo === "fixo" ? "0,00" : "Percentual"}
+                  className="flex-1"
+                  value={newLoan.lucroFrValor}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setNewLoan((s) => ({
+                      ...s,
+                      lucroFrValor: s.lucroFrTipo === "fixo" ? maskBRL(val) : val,
+                    }));
+                  }}
+                />
+                <Select
+                  value={newLoan.lucroFrTipo}
+                  onValueChange={(v: "fixo" | "percentual") =>
+                    setNewLoan((s) => ({ ...s, lucroFrTipo: v, lucroFrValor: "" }))
+                  }
+                >
+                  <SelectTrigger className="w-[100px] bg-surface">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="fixo">R$</SelectItem>
+                    <SelectItem value="percentual">%</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="space-y-2">

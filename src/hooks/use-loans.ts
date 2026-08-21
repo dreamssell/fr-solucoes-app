@@ -16,6 +16,8 @@ export type LoanRequestPayload = {
   reason?: string;
   idempotency_key: string;
   apply_interest_composition?: boolean;
+  fr_profit_input?: number;
+  fr_profit_kind?: "fixo" | "percentual";
 };
 
 export type LoanDecisionPayload = {
